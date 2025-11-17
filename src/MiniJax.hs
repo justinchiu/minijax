@@ -19,3 +19,17 @@ data Jaxpr = Jaxpr
   , getEquations :: [Equation]
   , getReturn :: Atom
   } deriving Show
+
+data Intepreter
+  = EvalInterpreter
+  | MockInterpreter
+  | JVPInterpreter
+
+
+add :: Float -> Float -> Float
+add = (+)
+mul :: Float -> Float -> Float
+mul = (*)
+
+
+
