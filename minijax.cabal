@@ -1,0 +1,59 @@
+cabal-version:       2.2
+
+name:                minijax
+version:             0.1.0.0
+-- synopsis:
+-- description:
+homepage:            https://github.com/githubuser/minijax#readme
+license:             BSD-3-Clause
+license-file:        LICENSE
+author:              Justin Chiu
+maintainer:          chiu.justin.t@gmail.com
+copyright:           2025 Justin Chiu
+category:            Web
+build-type:          Simple
+extra-source-files:  README.md
+                     CHANGELOG.md
+
+library
+  exposed-modules:     MiniJax
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+  ghc-options:         -Wall
+                       -Wcompat
+                       -Widentities
+                       -Wincomplete-record-updates
+                       -Wincomplete-uni-patterns
+                       -Wmissing-export-lists
+                       -Wmissing-home-modules
+                       -Wpartial-fields
+                       -Wredundant-constraints
+
+executable minijax
+  hs-source-dirs:      src
+  main-is:             Main.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+  ghc-options:         -Wall
+                       -Wcompat
+                       -Widentities
+                       -Wincomplete-record-updates
+                       -Wincomplete-uni-patterns
+                       -Wmissing-export-lists
+                       -Wmissing-home-modules
+                       -Wpartial-fields
+                       -Wredundant-constraints
+
+test-suite minijax-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5,
+                       minijax
+  ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
+
+source-repository head
+  type:     git
+  location: https://github.com/githubuser/minijax
