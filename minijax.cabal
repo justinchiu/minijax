@@ -18,8 +18,7 @@ extra-source-files:  README.md
 library
   exposed-modules:     MiniJax,
                        MiniJax.Common,
-                       MiniJax.ReaderState,
-                       MiniJax.Free
+                       MiniJax.Tagless
   hs-source-dirs:      src
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5,
@@ -55,11 +54,13 @@ test-suite minijax-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
+  other-modules:       TaglessSpec
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5,
                        minijax,
                        hspec,
-                       hspec-discover
+                       hspec-discover,
+                       mtl
   ghc-options:         -Wall -threaded -rtsopts -with-rtsopts=-N
   build-tool-depends:  hspec-discover:hspec-discover
 

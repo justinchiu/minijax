@@ -1,0 +1,57 @@
+# Stack build artifacts
+.stack-work/
+*~
+
+# Stack lock file (auto-generated)
+stack.yaml.lock
+
+# Cabal build artifacts (if using cabal directly)
+dist/
+dist-newstyle/
+cabal-dev/
+
+# GHC artifacts
+*.o
+*.hi
+*.chi
+*.chs.h
+*.dyn_o
+*.dyn_hi
+
+# Profiling files
+*.prof
+*.aux
+*.hp
+*.eventlog
+
+# Haskell Tool Stack
+.hsenv
+.hpc/
+.cabal-sandbox/
+cabal.sandbox.config
+
+# IDE/Editor files
+.vscode/
+*.swp
+*.swo
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+*.tix
+.ghc.environment.*
+
+# Documentation
+*.haddock
+doc/
+
+# Backup files
+*.bak
+*.orig
+
+# REPL history
+.ghci_history
