@@ -29,6 +29,18 @@ instance JaxSym Eval where
   add x y = return (x + y)
   mul x y = return (x * y)
 
+-- | Interpret an AST using tagless final
+interpret :: JaxSym m => Expr -> m Float
+interpret (Lit x) = return x
+interpret (EAdd e1 e2) = do
+  x <- interpret e1
+  y <- interpret e2
+  add x y
+interpret (EMul e1 e2) = do
+  x <- interpret e1
+  y <- interpret e2
+  mul x y
+
 -- | Placeholder for JVP interpreter
 newtype JVP a = JVP (Identity a)
   deriving (Functor, Applicative, Monad)

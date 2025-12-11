@@ -30,3 +30,10 @@ data Jaxpr = Jaxpr
   , getEquations :: [Equation]
   , getReturn :: Atom
   } deriving (Show, Eq)
+
+-- | Expression AST for the REPL
+data Expr
+  = Lit Float        -- ^ Literal value
+  | EAdd Expr Expr   -- ^ Addition
+  | EMul Expr Expr   -- ^ Multiplication
+  deriving (Show, Eq)
