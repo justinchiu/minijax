@@ -1,7 +1,8 @@
 module TaglessSpec (spec) where
 
 import Test.Hspec
-import MiniJax
+import MiniJax.Common
+import MiniJax.Tagless
 
 spec :: Spec
 spec = do
