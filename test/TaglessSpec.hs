@@ -8,7 +8,7 @@ import MiniJax.Tagless
 import MiniJax.Tagless.Eval
 import MiniJax.Tagless.JVP.Dynamic
 import qualified MiniJax.Tagless.JVP.TaggedDynamic as TD
-import qualified MiniJax.Tagless.JVP.Static as TS
+import qualified MiniJax.Tagless.JVP.TaggedStatic as TS
 
 spec :: Spec
 spec = do
@@ -79,16 +79,19 @@ spec = do
       -- Correct answer would be 0.0, but Dynamic gives 1.0
       result `shouldBe` 1.0
 
-    it "Static should pass perturbation confusion" $ do
-      -- Static uses type-level tags to avoid perturbation confusion
-      let derivative :: (forall s. TS.SDual s -> TS.Static s (TS.SDual s)) -> Float -> Float
-          derivative func x = TS.runStaticTangent $ do
-            input <- TS.staticDual x 1.0
+    it "TaggedStatic should pass perturbation confusion" $ do
+      -- TaggedStatic uses type-level tags to avoid perturbation confusion
+      let runTangent = TS.runTaggedStaticTangent
+          mkDual = TS.taggedDual
+          liftDual = TS.liftTagged
+          derivative :: (forall s. TS.TaggedDual s -> TS.TaggedStatic s (TS.TaggedDual s)) -> Float -> Float
+          derivative func x = runTangent $ do
+            input <- mkDual x 1.0
             func input
-          testFunc :: TS.SDual s -> TS.Static s (TS.SDual s)
+          testFunc :: TS.TaggedDual s -> TS.TaggedStatic s (TS.TaggedDual s)
           testFunc x = do
-            let g :: TS.SDual s' -> TS.Static s' (TS.SDual s')
-                g _ = TS.liftStatic x
+            let g :: TS.TaggedDual s' -> TS.TaggedStatic s' (TS.TaggedDual s')
+                g _ = liftDual x
             let shouldBeZero = derivative g 0.0
             z <- lit shouldBeZero
             mul x z
@@ -98,11 +101,14 @@ spec = do
     it "TaggedDynamic should pass perturbation confusion" $ do
       -- TaggedDynamic uses runtime tags to avoid perturbation confusion
       -- The derivative function creates a new TaggedDynamic context for each differentiation
-      let derivative :: (TD.TaggedDual -> TD.TaggedDynamic TD.TaggedDual) -> Float -> Float
-          derivative func x = TD.tangent (TD.runTaggedDynamic $ do
-            input <- TD.taggedDual x 1.0  -- Create input with current interpreter's tag
+      let runTangent = TD.runTaggedTangent
+          mkDual = TD.taggedDual
+          liftDual = TD.liftTagged
+          derivative :: (TD.TaggedDual -> TD.TaggedDynamic TD.TaggedDual) -> Float -> Float
+          derivative func x = runTangent $ do
+            input <- mkDual x 1.0  -- Create input with current interpreter's tag
             funcResult <- func input
-            TD.liftTagged funcResult)  -- Lift result to treat values from other contexts as constants
+            liftDual funcResult  -- Lift result to treat values from other contexts as constants
           testFunc :: TD.TaggedDual -> TD.TaggedDynamic TD.TaggedDual
           testFunc x = do
             -- g is constant in its argument, so its derivative should be 0

@@ -10,7 +10,17 @@
 -- dual number has a different tag, it's treated as a constant (tangent = 0).
 --
 -- This is similar to the Python version in autodidax2.md.
-module MiniJax.Tagless.JVP.TaggedDynamic where
+module MiniJax.Tagless.JVP.TaggedDynamic
+  ( TaggedDynamic
+  , TaggedDual
+  , runTaggedDynamic
+  , runTaggedDual
+  , runTaggedTangent
+  , taggedDual
+  , liftTagged
+  , primal
+  , tangent
+  ) where
 
 import Control.Monad.Reader
 import Data.IORef
@@ -54,6 +64,14 @@ runTaggedDynamic (TaggedDynamic m) = unsafePerformIO $ do
   newTag <- readIORef tagCounterRef
   modifyIORef' tagCounterRef (+1)
   return (runReader m (TaggedDynamicState { interpreterTag = newTag, previousInterpreter = () }))
+
+-- | Run a TaggedDynamic computation returning a tagged dual.
+runTaggedDual :: TaggedDynamic TaggedDual -> TaggedDual
+runTaggedDual = runTaggedDynamic
+
+-- | Run a TaggedDynamic computation and return the tangent component.
+runTaggedTangent :: TaggedDynamic TaggedDual -> Float
+runTaggedTangent m = tangent (runTaggedDual m)
 
 -- | Create a tagged dual number with the current interpreter's tag
 taggedDual :: Float -> Float -> TaggedDynamic TaggedDual
