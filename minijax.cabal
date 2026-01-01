@@ -13,7 +13,6 @@ copyright:           2025 Justin Chiu
 category:            Web
 build-type:          Simple
 extra-source-files:  README.md
-                     CHANGELOG.md
 
 library
   exposed-modules:     MiniJax,

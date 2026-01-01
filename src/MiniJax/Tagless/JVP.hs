@@ -1,7 +1,6 @@
 -- | JVP (forward-mode automatic differentiation) interpreters.
 --
--- This module re-exports all JVP variants. Currently only 'Dynamic' is
--- implemented; 'Static' and 'TaggedDynamic' are placeholders for future work.
+-- This module re-exports all JVP variants.
 module MiniJax.Tagless.JVP
   ( module MiniJax.Tagless.JVP.Dynamic
   , module MiniJax.Tagless.JVP.TaggedDynamic

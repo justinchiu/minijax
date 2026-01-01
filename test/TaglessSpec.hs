@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes #-}
+
 module TaglessSpec (spec) where
 
 import Test.Hspec
@@ -5,6 +7,8 @@ import MiniJax.Common
 import MiniJax.Tagless
 import MiniJax.Tagless.Eval
 import MiniJax.Tagless.JVP.Dynamic
+import qualified MiniJax.Tagless.JVP.TaggedDynamic as TD
+import qualified MiniJax.Tagless.JVP.Static as TS
 
 spec :: Spec
 spec = do
@@ -52,25 +56,10 @@ spec = do
       tangent result `shouldBe` 7.0
 
   describe "JVP perturbation confusion" $ do
-    -- Helper function to test perturbation confusion with any JVP interpreter.
     -- The test function f(x) = x * derivative(g, 0) where g(y) = x.
     -- Since g is constant in y, its derivative should be 0, so f'(0) should be 0.
     -- This test exposes perturbation confusion: naive implementations will incorrectly
     -- propagate the outer derivative into the inner derivative computation.
-    let perturbationConfusionTest 
-          :: (Float -> Float -> Dual)      -- makeDual: creates a dual number with given primal and tangent
-          -> (JVP Dual -> Dual)            -- runJVP: runs the JVP computation
-          -> Float                         -- expected: the expected derivative value (should be 0.0)
-          -> IO ()
-        perturbationConfusionTest makeDual runJVPImpl expected = do
-          let derivative func x = tangent (runJVPImpl (func (makeDual x 1.0)))
-              testFunc x = do
-                let g _ = return x
-                let shouldBeZero = derivative g 0.0
-                z <- lit shouldBeZero
-                mul x z
-              result = derivative testFunc 0.0
-          result `shouldBe` expected
 
     it "Dynamic (naive) should fail perturbation confusion [EXPECTED FAILURE]" $ do
       -- Dynamic uses untagged dual numbers, so it will incorrectly compute
@@ -92,16 +81,35 @@ spec = do
 
     it "Static should pass perturbation confusion" $ do
       -- Static uses type-level tags to avoid perturbation confusion
-      pendingWith "Static JVP interpreter not yet implemented"
-      -- When implemented, replace with:
-      -- let makeStaticDual primalVal tangentVal = ...  -- create dual with type-level tag
-      --     runStaticJVP = ...                         -- run Static JVP computation
-      -- perturbationConfusionTest makeStaticDual runStaticJVP 0.0
+      let derivative :: (forall s. TS.SDual s -> TS.Static s (TS.SDual s)) -> Float -> Float
+          derivative func x = TS.runStaticTangent $ do
+            input <- TS.staticDual x 1.0
+            func input
+          testFunc :: TS.SDual s -> TS.Static s (TS.SDual s)
+          testFunc x = do
+            let g :: TS.SDual s' -> TS.Static s' (TS.SDual s')
+                g _ = TS.liftStatic x
+            let shouldBeZero = derivative g 0.0
+            z <- lit shouldBeZero
+            mul x z
+          result = derivative testFunc 0.0
+      result `shouldBe` 0.0
 
     it "TaggedDynamic should pass perturbation confusion" $ do
       -- TaggedDynamic uses runtime tags to avoid perturbation confusion
-      pendingWith "TaggedDynamic JVP interpreter not yet implemented"
-      -- When implemented, replace with:
-      -- let makeTaggedDual primalVal tangentVal = ...  -- create dual with runtime tag
-      --     runTaggedDynamicJVP = ...                   -- run TaggedDynamic JVP computation
-      -- perturbationConfusionTest makeTaggedDual runTaggedDynamicJVP 0.0
+      -- The derivative function creates a new TaggedDynamic context for each differentiation
+      let derivative :: (TD.TaggedDual -> TD.TaggedDynamic TD.TaggedDual) -> Float -> Float
+          derivative func x = TD.tangent (TD.runTaggedDynamic $ do
+            input <- TD.taggedDual x 1.0  -- Create input with current interpreter's tag
+            funcResult <- func input
+            TD.liftTagged funcResult)  -- Lift result to treat values from other contexts as constants
+          testFunc :: TD.TaggedDual -> TD.TaggedDynamic TD.TaggedDual
+          testFunc x = do
+            -- g is constant in its argument, so its derivative should be 0
+            let g :: TD.TaggedDual -> TD.TaggedDynamic TD.TaggedDual
+                g _ = return x  -- Returns x from outer context
+            let shouldBeZero = derivative g 0.0
+            z <- lit shouldBeZero  -- This creates a TaggedDual with tangent=0 (constant)
+            mul x z
+          result = derivative testFunc 0.0
+      result `shouldBe` 0.0
