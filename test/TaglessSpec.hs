@@ -52,12 +52,56 @@ spec = do
       tangent result `shouldBe` 7.0
 
   describe "JVP perturbation confusion" $ do
-    it "demonstrates the untagged dual-number limitation" $ do
-      let derivative f x = tangent (runJVP (f (Dual x 1.0)))
-          f x = do
+    -- Helper function to test perturbation confusion with any JVP interpreter.
+    -- The test function f(x) = x * derivative(g, 0) where g(y) = x.
+    -- Since g is constant in y, its derivative should be 0, so f'(0) should be 0.
+    -- This test exposes perturbation confusion: naive implementations will incorrectly
+    -- propagate the outer derivative into the inner derivative computation.
+    let perturbationConfusionTest 
+          :: (Float -> Float -> Dual)      -- makeDual: creates a dual number with given primal and tangent
+          -> (JVP Dual -> Dual)            -- runJVP: runs the JVP computation
+          -> Float                         -- expected: the expected derivative value (should be 0.0)
+          -> IO ()
+        perturbationConfusionTest makeDual runJVPImpl expected = do
+          let derivative func x = tangent (runJVPImpl (func (makeDual x 1.0)))
+              testFunc x = do
+                let g _ = return x
+                let shouldBeZero = derivative g 0.0
+                z <- lit shouldBeZero
+                mul x z
+              result = derivative testFunc 0.0
+          result `shouldBe` expected
+
+    it "Dynamic (naive) should fail perturbation confusion [EXPECTED FAILURE]" $ do
+      -- Dynamic uses untagged dual numbers, so it will incorrectly compute
+      -- the derivative due to perturbation confusion. The correct answer is 0.0,
+      -- but Dynamic gives 1.0 instead. This test documents the known bug by
+      -- expecting the wrong answer. If Dynamic is ever fixed to give 0.0, this
+      -- test will fail, alerting us that the bug has been fixed.
+      let makeDual primalVal tangentVal = Dual primalVal tangentVal
+          derivative func x = tangent (runJVP (func (makeDual x 1.0)))
+          testFunc x = do
             let g _ = return x
             let shouldBeZero = derivative g 0.0
             z <- lit shouldBeZero
             mul x z
-          result = derivative f 0.0
-      result `shouldBe` 0.0
+          result = derivative testFunc 0.0
+      -- Expect the wrong answer (1.0) due to perturbation confusion bug
+      -- Correct answer would be 0.0, but Dynamic gives 1.0
+      result `shouldBe` 1.0
+
+    it "Static should pass perturbation confusion" $ do
+      -- Static uses type-level tags to avoid perturbation confusion
+      pendingWith "Static JVP interpreter not yet implemented"
+      -- When implemented, replace with:
+      -- let makeStaticDual primalVal tangentVal = ...  -- create dual with type-level tag
+      --     runStaticJVP = ...                         -- run Static JVP computation
+      -- perturbationConfusionTest makeStaticDual runStaticJVP 0.0
+
+    it "TaggedDynamic should pass perturbation confusion" $ do
+      -- TaggedDynamic uses runtime tags to avoid perturbation confusion
+      pendingWith "TaggedDynamic JVP interpreter not yet implemented"
+      -- When implemented, replace with:
+      -- let makeTaggedDual primalVal tangentVal = ...  -- create dual with runtime tag
+      --     runTaggedDynamicJVP = ...                   -- run TaggedDynamic JVP computation
+      -- perturbationConfusionTest makeTaggedDual runTaggedDynamicJVP 0.0
