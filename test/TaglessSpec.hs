@@ -3,6 +3,8 @@ module TaglessSpec (spec) where
 import Test.Hspec
 import MiniJax.Common
 import MiniJax.Tagless
+import MiniJax.Tagless.Eval
+import MiniJax.Tagless.JVP.Dynamic
 
 spec :: Spec
 spec = do
@@ -48,3 +50,14 @@ spec = do
       let result = runJVP (foo (Dual 2.0 1.0))
       primal result `shouldBe` 10.0
       tangent result `shouldBe` 7.0
+
+  describe "JVP perturbation confusion" $ do
+    it "demonstrates the untagged dual-number limitation" $ do
+      let derivative f x = tangent (runJVP (f (Dual x 1.0)))
+          f x = do
+            let g _ = return x
+            let shouldBeZero = derivative g 0.0
+            z <- lit shouldBeZero
+            mul x z
+          result = derivative f 0.0
+      result `shouldBe` 0.0

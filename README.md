@@ -3,7 +3,9 @@
 Interpreter-style imports:
 
 ```hs
-import MiniJax.Tagless
+import MiniJax.Tagless -- core language (JaxSym, foo, interpret)
+import MiniJax.Tagless.Eval -- Eval interpreter
+import MiniJax.Tagless.JVP.Dynamic -- untagged JVP interpreter
 ```
 
 Shared core types:
