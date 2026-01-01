@@ -1,3 +1,8 @@
+-- | Common types shared across MiniJax interpreters.
+--
+-- This module defines the core data structures used throughout the library:
+-- primitive operations, dual numbers for AD, the Jaxpr IR representation,
+-- and the expression AST.
 module MiniJax.Common where
 
 -- | Primitive operations

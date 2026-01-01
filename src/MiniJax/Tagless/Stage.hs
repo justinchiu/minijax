@@ -1,6 +1,14 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 
+-- | Staging interpreter: converts programs to Jaxpr IR.
+--
+-- This interpreter stages programs into the 'Jaxpr' IR representation, enabling
+-- program transformations that require examining the entire program structure
+-- (e.g., dead-code elimination, reverse-mode AD via transposition).
+--
+-- /Note: This module is incomplete. The interpreter structure exists but/
+-- /operations are not yet implemented./
 module MiniJax.Tagless.Stage where
 
 import Control.Monad.State

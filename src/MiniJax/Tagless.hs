@@ -1,5 +1,16 @@
 {-# LANGUAGE TypeFamilies #-}
 
+-- | Tagless final encoding of MiniJax operations.
+--
+-- This module defines the core language interface through the 'JaxSym' type class.
+-- Different interpreters implement 'JaxSym' to provide different semantics:
+--
+-- * Evaluation: @MiniJax.Tagless.Eval@ interprets values as 'Float'
+-- * Forward-mode AD: @MiniJax.Tagless.JVP.Dynamic@ interprets values as 'Dual'
+-- * Staging: @MiniJax.Tagless.Stage@ interprets values as 'Atom' (for IR construction)
+--
+-- The same program (e.g., 'foo') can be interpreted in multiple ways without
+-- modification, enabling evaluation, differentiation, compilation, etc.
 module MiniJax.Tagless where
 
 import MiniJax.Common

@@ -1,6 +1,10 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 
+-- | Evaluation interpreter: performs ordinary arithmetic on concrete values.
+--
+-- This is the simplest interpreter, evaluating operations directly on 'Float'
+-- values. Use this for normal computation without any transformations.
 module MiniJax.Tagless.Eval where
 
 import Control.Monad.Identity

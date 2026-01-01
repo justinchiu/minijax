@@ -1,6 +1,17 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 
+-- | Forward-mode automatic differentiation using untagged dual numbers.
+--
+-- This interpreter implements JVP (Jacobian-vector product) for forward-mode AD.
+-- Values are interpreted as 'Dual' numbers carrying both primal and tangent
+-- components. The derivative of a function @f@ at point @x@ with tangent @v@
+-- can be computed by evaluating @f@ with input @Dual x v@ and reading the
+-- tangent component of the result.
+--
+-- Note: This uses /untagged/ dual numbers, which can suffer from "perturbation
+-- confusion" in higher-order differentiation scenarios. See the test suite
+-- for an example of this limitation.
 module MiniJax.Tagless.JVP.Dynamic where
 
 import Control.Monad.Identity
