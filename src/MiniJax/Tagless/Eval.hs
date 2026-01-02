@@ -5,7 +5,10 @@
 --
 -- This is the simplest interpreter, evaluating operations directly on 'Float'
 -- values. Use this for normal computation without any transformations.
-module MiniJax.Tagless.Eval where
+module MiniJax.Tagless.Eval
+  ( Eval(..)
+  , runEval
+  ) where
 
 import Control.Monad.Identity
 import MiniJax.Tagless

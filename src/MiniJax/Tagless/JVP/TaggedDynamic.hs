@@ -107,3 +107,11 @@ instance JaxSym TaggedDynamic where
     taggedDual p t
   
   lit x = taggedDual x 0.0
+
+instance JaxAD TaggedDynamic where
+  derivative f x = do
+    let t = runTaggedTangent $ do
+          input <- taggedDual x 1.0
+          result <- f input
+          liftTagged result
+    lit t

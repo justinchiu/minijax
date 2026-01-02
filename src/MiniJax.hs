@@ -3,7 +3,7 @@
 -- This module provides a convenient entry point that re-exports the core
 -- language and common types. For more control, import specific modules:
 --
--- * @MiniJax.Tagless@ - Core tagless final language (@JaxSym@, @foo@, @interpret@)
+-- * @MiniJax.Tagless@ - Core tagless final language (@JaxSym@)
 -- * @MiniJax.Tagless.Eval@ - Evaluation interpreter
 -- * @MiniJax.Tagless.JVP.Dynamic@ - Forward-mode AD interpreter
 -- * @MiniJax.Common@ - Shared types (@Dual@, @Jaxpr@, @Expr@, etc.)

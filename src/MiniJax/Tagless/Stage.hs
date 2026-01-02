@@ -9,7 +9,10 @@
 --
 -- /Note: This module is incomplete. The interpreter structure exists but/
 -- /operations are not yet implemented./
-module MiniJax.Tagless.Stage where
+module MiniJax.Tagless.Stage
+  ( Stage(..)
+  , runStage
+  ) where
 
 import Control.Monad.State
 import MiniJax.Common
@@ -25,7 +28,9 @@ data StageState = StageState
   }
 
 runStage :: (Var -> Stage Var) -> Jaxpr
-runStage = error "Stage not implemented yet"
+runStage _ =
+  let initial = StageState { equations = [], nameCounter = 0 }
+  in seq (equations initial) (seq (nameCounter initial) (error "Stage not implemented yet"))
 
 instance JaxSym Stage where
   type JaxVal Stage = Atom

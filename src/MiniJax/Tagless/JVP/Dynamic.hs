@@ -50,3 +50,8 @@ instance JaxSym JVP where
   add x y = return (Dual (primal x + primal y) (tangent x + tangent y))
   mul x y = return (Dual (primal x * primal y) (primal x * tangent y + tangent x * primal y))
   lit x = return (Dual x 0.0)
+
+instance JaxAD JVP where
+  derivative f x = do
+    let t = tangent (runJVP (f (Dual x 1.0)))
+    lit t

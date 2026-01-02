@@ -21,6 +21,7 @@ module MiniJax.Tagless.JVP.TaggedStatic
   ) where
 
 import Control.Monad.Identity
+import Unsafe.Coerce (unsafeCoerce)
 import qualified MiniJax.Common as Common
 import MiniJax.Tagless
 
@@ -67,3 +68,15 @@ instance JaxSym (TaggedStatic s) where
         t = primal x * tangent y + tangent x * primal y
     in return (TaggedDual (Common.Dual p t))
   lit x = taggedDual x 0.0
+
+instance JaxAD (TaggedStatic s) where
+  derivative f x = do
+    -- Run the inner derivative in a fresh tag; coerce f across tags so a
+    -- simple `g y = return x` API is possible at call sites.
+    let f' :: forall t. TaggedDual t -> TaggedStatic t (TaggedDual t)
+        f' = unsafeCoerce f
+        t = runTaggedStaticTangent $ do
+          input <- taggedDual x 1.0
+          result <- f' input
+          liftTagged result
+    lit t

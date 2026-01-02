@@ -3,7 +3,15 @@
 -- This module defines the core data structures used throughout the library:
 -- primitive operations, dual numbers for AD, the Jaxpr IR representation,
 -- and the expression AST.
-module MiniJax.Common where
+module MiniJax.Common
+  ( Op(..)
+  , Var
+  , Atom(..)
+  , Dual(..)
+  , Equation(..)
+  , Jaxpr(..)
+  , Expr(..)
+  ) where
 
 -- | Primitive operations
 data Op = Add | Mul
