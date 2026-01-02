@@ -23,28 +23,24 @@ module MiniJax.Tagless.JVP.TaggedDynamic
   ) where
 
 import Control.Monad.Reader
-import Data.IORef
+import Data.Unique (Unique, newUnique)
 import System.IO.Unsafe (unsafePerformIO)
 import MiniJax.Tagless
 
--- | Global counter for generating unique interpreter tags.
--- We need global mutable state to ensure each call to 'runTaggedDynamic' gets
--- a unique tag. This requires 'IORef' (which is in 'IO'), but we want a pure
--- API, so we use 'unsafePerformIO' to escape from 'IO'.
-tagCounterRef :: IORef Int
-tagCounterRef = unsafePerformIO (newIORef 0)
-{-# NOINLINE tagCounterRef #-}
-
 -- | Tagged dual number with an interpreter tag to avoid perturbation confusion.
 data TaggedDual = TaggedDual
-  { tag :: Int      -- ^ Unique identifier for the interpreter that created this
+  { tag :: Unique   -- ^ Unique identifier for the interpreter that created this
   , primal :: Float
   , tangent :: Float
-  } deriving (Show, Eq)
+  } deriving (Eq)
+
+instance Show TaggedDual where
+  show (TaggedDual _ p t) =
+    "TaggedDual {tag = <unique>, primal = " ++ show p ++ ", tangent = " ++ show t ++ "}"
 
 -- | TaggedDynamic interpreter state
 data TaggedDynamicState = TaggedDynamicState
-  { interpreterTag :: Int              -- ^ Tag for this interpreter instance
+  { interpreterTag :: Unique           -- ^ Tag for this interpreter instance
   , previousInterpreter :: ()   -- ^ Placeholder for previous interpreter context
   }
 
@@ -54,15 +50,13 @@ newtype TaggedDynamic a = TaggedDynamic (Reader TaggedDynamicState a)
   deriving (Functor, Applicative, Monad)
 
 -- | Run a TaggedDynamic computation with a fresh interpreter tag.
--- 
+--
 -- Uses 'unsafePerformIO' because we need to read/modify a global 'IORef'
 -- to generate unique tags, but we want a pure API. The 'do' notation here
--- is inside the 'IO' monad (needed for 'IORef' operations), and
--- 'unsafePerformIO' converts 'IO a' to 'a'.
+-- is inside the 'IO' monad, and 'unsafePerformIO' converts 'IO a' to 'a'.
 runTaggedDynamic :: TaggedDynamic a -> a
 runTaggedDynamic (TaggedDynamic m) = unsafePerformIO $ do
-  newTag <- readIORef tagCounterRef
-  modifyIORef' tagCounterRef (+1)
+  newTag <- newUnique
   return (runReader m (TaggedDynamicState { interpreterTag = newTag, previousInterpreter = () }))
 
 -- | Run a TaggedDynamic computation returning a tagged dual.

@@ -6,6 +6,7 @@ import MiniJax.Common
 import MiniJax.Tagless
 import MiniJax.Tagless.Eval
 import MiniJax.Tagless.JVP.Dynamic
+import MiniJax.Tagless.Stage
 import qualified MiniJax.Tagless.JVP.TaggedDynamic as TD
 import qualified MiniJax.Tagless.JVP.TaggedStatic as TS
 
@@ -34,6 +35,16 @@ f x = do
   shouldBeZero <- derivative g 0.0
   mul x shouldBeZero
 
+atomToVar :: Atom -> Var
+atomToVar (VarAtom v) = v
+atomToVar _ = error "expected VarAtom"
+
+stageFoo :: Var -> Stage Var
+stageFoo x = do
+  y <- add (VarAtom x) (LitAtom 3.0)
+  z <- mul (VarAtom x) y
+  return (atomToVar z)
+
 -- Interpret an AST using tagless final.
 interpret :: JaxSym m => Expr -> m (JaxVal m)
 interpret (Lit x) = lit x
@@ -55,6 +66,16 @@ spec = do
 
     it "should evaluate foo example" $ do
       runEval (foo 2.0) `shouldBe` 10.0
+
+    it "should match finite difference for foo (approx)" $ do
+      let x = 2.0
+          eps = 1.0e-5
+          f a = runEval (foo a)
+          diff = (f (x + eps) - f x) / eps
+      diff `shouldSatisfy` (\d -> abs (d - 7.000009999913458) < 1.0e-6)
+
+    it "should show primal-tangent packing example (approx)" $ do
+      runEval (foo 2.00001) `shouldSatisfy` (\v -> abs (v - 10.0000700001) < 1.0e-9)
 
   describe "AST interpretation" $ do
     it "should interpret literals" $ do
@@ -90,6 +111,35 @@ spec = do
       let result = runJVP (foo (Dual 2.0 1.0))
       primal result `shouldBe` 10.0
       tangent result `shouldBe` 7.0
+
+  describe "Higher-order AD (pending)" $ do
+    it "should compute 0th-order derivative of foo at x=2" $ do
+      pendingWith "higher-order AD via nested JVP not implemented in Haskell port"
+
+    it "should compute 1st-order derivative of foo at x=2" $ do
+      pendingWith "higher-order AD via nested JVP not implemented in Haskell port"
+
+    it "should compute 2nd-order derivative of foo at x=2" $ do
+      pendingWith "higher-order AD via nested JVP not implemented in Haskell port"
+
+    it "should compute 3rd-order derivative of foo at x=2" $ do
+      pendingWith "higher-order AD via nested JVP not implemented in Haskell port"
+
+    it "should compute 4th-order derivative of foo at x=2" $ do
+      pendingWith "higher-order AD via nested JVP not implemented in Haskell port"
+
+  describe "Staging (expected failures)" $ do
+    it "should stage foo into a jaxpr" $ do
+      let expected =
+            Jaxpr
+              { getParams = ["v_1"]
+              , getEquations =
+                  [ Equation "v_2" Add [VarAtom "v_1", LitAtom 3.0]
+                  , Equation "v_3" Mul [VarAtom "v_1", VarAtom "v_2"]
+                  ]
+              , getReturn = VarAtom "v_3"
+              }
+      runStage stageFoo `shouldBe` expected
 
   describe "JVP perturbation confusion" $ do
     -- The test function f(x) = x * derivative(g, 0) where g(y) = x.
