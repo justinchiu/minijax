@@ -4,20 +4,22 @@ let float_eq a b =
   let eps = 1e-9 in
   abs_float (a -. b) < eps
 
+(* Test functions. *)
+module Foo (S : SYM) = struct
+  let run x = S.mul x (S.add x (S.lit 3.0))
+end
+
+module F (S : SYM) = struct
+  let run x =
+    let g x _ = x in
+    let g_x = g x in
+    let _p, should_be_zero =
+      jvp_fun (module S) g_x (S.lit 0.0) (S.lit 1.0)
+    in
+    S.mul x should_be_zero
+end
+
 let () =
-  let module Foo (S : SYM) = struct
-    let run x = S.mul x (S.add x (S.lit 3.0))
-  end in
-
-  let module F (S : SYM) = struct
-    let run x =
-      let g _ = x in
-      let _p, should_be_zero =
-        jvp_fun (module S) g (S.lit 0.0) (S.lit 1.0)
-      in
-      S.mul x should_be_zero
-  end in
-
   let v = run_eval (module Foo) 2.0 in
   assert (float_eq v 10.0);
 

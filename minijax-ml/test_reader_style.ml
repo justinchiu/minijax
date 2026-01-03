@@ -4,9 +4,19 @@ let float_eq a b =
   let eps = 1e-9 in
   abs_float (a -. b) < eps
 
+(* Test functions. *)
 let foo interp x =
   let y = add interp x (VFloat 3.0) in
   mul interp x y
+
+let g x _ = x
+
+let f interp x =
+  let g_x = g x in
+  let should_be_zero =
+    derivative ~base_interpreter:eval_interpreter (fun _ v -> g_x v) 0.0
+  in
+  mul interp x should_be_zero
 
 let () =
   (* Eval interpreter *)
@@ -91,13 +101,6 @@ let () =
   assert (float_eq result_value 10.0);
 
   (* Perturbation confusion should pass with tagged dynamic JVP *)
-  let f interp x =
-    let g _ = x in
-    let should_be_zero =
-      derivative ~base_interpreter:eval_interpreter (fun _ v -> g v) 0.0
-    in
-    mul interp x should_be_zero
-  in
   let _p_conf, t_conf =
     jvp ~base_interpreter:eval_interpreter f (VFloat 0.0) (VFloat 1.0)
   in

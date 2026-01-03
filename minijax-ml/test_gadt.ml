@@ -9,6 +9,20 @@ let foo_expr =
 
 let foo x = eval foo_expr ~x
 
+(* Test functions. *)
+let g x _ = x
+
+let f interp x =
+  let g_x = g x in
+  let _p, should_be_zero =
+    jvp_fun
+      ~base_interpreter:eval_interpreter
+      (fun _ v -> g_x v)
+      (VFloat 0.0)
+      (VFloat 1.0)
+  in
+  mul interp x should_be_zero
+
 let () =
   let v = foo 2.0 in
   assert (float_eq v 10.0);
@@ -44,13 +58,6 @@ let () =
   let result = eval_jaxpr eval_interpreter jaxpr [VFloat 2.0] in
   assert (float_eq (float_of_value result) 10.0);
 
-  let f interp x =
-    let g _ = x in
-    let _p, should_be_zero =
-      jvp_fun ~base_interpreter:eval_interpreter (fun _ v -> g v) (VFloat 0.0) (VFloat 1.0)
-    in
-    mul interp x should_be_zero
-  in
   let _p_conf, t_conf =
     jvp_fun ~base_interpreter:eval_interpreter f (VFloat 0.0) (VFloat 1.0)
   in

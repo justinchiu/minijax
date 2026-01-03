@@ -4,9 +4,19 @@ let float_eq a b =
   let eps = 1e-9 in
   abs_float (a -. b) < eps
 
+(* Test functions. *)
 let foo x : value reader =
   let* y = add x (VFloat 3.0) in
   mul x y
+
+let g x _ = return x
+
+let f x =
+  let g_x = g x in
+  let _p, should_be_zero =
+    jvp ~base_interpreter:eval_interpreter g_x (VFloat 0.0) (VFloat 1.0)
+  in
+  mul x should_be_zero
 
 let () =
   (* Eval interpreter *)
@@ -91,13 +101,6 @@ let () =
   assert (float_eq result_value 10.0);
 
   (* Perturbation confusion should pass with tagged dynamic JVP *)
-  let f x =
-    let g _ = return x in
-    let _p, should_be_zero =
-      jvp ~base_interpreter:eval_interpreter g (VFloat 0.0) (VFloat 1.0)
-    in
-    mul x should_be_zero
-  in
   let _p_conf, t_conf =
     jvp ~base_interpreter:eval_interpreter f (VFloat 0.0) (VFloat 1.0)
   in

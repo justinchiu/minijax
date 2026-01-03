@@ -4,8 +4,18 @@ let float_eq a b =
   let eps = 1e-9 in
   abs_float (a -. b) < eps
 
+(* Test functions. *)
 let foo x =
   mul x (add x (VFloat 3.0))
+
+let g x _ = x
+
+let f x =
+  let g_x = g x in
+  let should_be_zero =
+    set_interpreter eval_interpreter (fun () -> derivative g_x 0.0)
+  in
+  mul x should_be_zero
 
 let () =
   (* Eval interpreter *)
@@ -87,13 +97,6 @@ let () =
   assert (float_eq result_value 10.0);
 
   (* Perturbation confusion should pass with tagged dynamic JVP *)
-  let f x =
-    let g _ = x in
-    let should_be_zero =
-      set_interpreter eval_interpreter (fun () -> derivative g 0.0)
-    in
-    mul x should_be_zero
-  in
   let _p_conf, t_conf =
     set_interpreter eval_interpreter (fun () ->
       jvp f (VFloat 0.0) (VFloat 1.0))
