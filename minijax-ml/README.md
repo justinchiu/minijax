@@ -8,6 +8,9 @@ A minimal JAX-like interpreter in OCaml, following `autodidax2.md`:
   - `minijax_global.ml` (global interpreter)
   - `minijax.ml` (reader-style argument passing)
   - `minijax_reader.ml` (Reader monad with `let*`)
+- Type-safe variants:
+  - `minijax_gadt.ml` (GADT-typed expression AST)
+  - `minijax_tagged.ml` (tagless-final with type-indexed JVP tags)
 
 ## Quick sketch
 

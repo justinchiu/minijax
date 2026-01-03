@@ -1,7 +1,7 @@
 (library
  (name minijax)
  (wrapped false)
- (modules minijax minijax_global minijax_reader))
+ (modules minijax minijax_global minijax_reader minijax_gadt minijax_tagged))
 
 (test
  (name test_global)
@@ -16,4 +16,14 @@
 (test
  (name test_reader_monad)
  (modules test_reader_monad)
+ (libraries minijax))
+
+(test
+ (name test_gadt)
+ (modules test_gadt)
+ (libraries minijax))
+
+(test
+ (name test_tagged)
+ (modules test_tagged)
  (libraries minijax))
