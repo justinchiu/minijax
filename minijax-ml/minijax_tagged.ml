@@ -51,6 +51,43 @@ module type PROG = functor (S : SYM) -> sig
   val run : S.t -> S.t
 end
 
+module type PACKED = sig
+  module S : SYM
+  val lift : float -> S.t
+  val seed : S.t
+  val input : float -> S.t
+  val unpack : S.t -> float list
+end
+
+let last_exn xs =
+  match List.rev xs with
+  | [] -> invalid_arg "expected non-empty list"
+  | x :: _ -> x
+
+let rec build_packed n : (module PACKED) =
+  if n = 0 then
+    (module struct
+      module S = Eval
+      let lift x = x
+      let seed = 1.0
+      let input x = x
+      let unpack x = [x]
+    end)
+  else
+    let module B = (val build_packed (n - 1) : PACKED) in
+    let module Tag = struct type t end in
+    let module J = Jvp(B.S)(Tag) in
+    (module struct
+      module S = J
+      let lift x = J.dual (B.lift x) (B.lift 0.0)
+      let seed = J.dual B.seed (B.lift 0.0)
+      let input x = J.dual (B.input x) B.seed
+      let unpack v =
+        let p_list = B.unpack (J.primal v) in
+        let t_list = B.unpack (J.tangent v) in
+        p_list @ [last_exn t_list]
+    end)
+
 let run_eval (module P : PROG) x =
   let module PE = P(Eval) in
   PE.run x
@@ -65,6 +102,12 @@ let jvp (module P : PROG) primal tangent =
 let derivative p x =
   let _, t = jvp p x 1.0 in
   t
+
+let jvp_n (module P : PROG) n x =
+  let module Pack = (val build_packed n : PACKED) in
+  let module PJ = P(Pack.S) in
+  let out = PJ.run (Pack.input x) in
+  Pack.unpack out
 
 let jvp2 (module P : PROG) x =
   let module Tag1 = struct type t end in

@@ -19,6 +19,9 @@ let () =
   let d = derivative (module Foo) 2.0 in
   assert (float_eq d 7.0);
 
+  let ds = jvp_n (module Foo) 2 2.0 in
+  assert (ds = [10.0; 7.0; 2.0]);
+
   let p2, t1, t2 = jvp2 (module Foo) 2.0 in
   assert (float_eq p2 10.0);
   assert (float_eq t1 7.0);
