@@ -35,6 +35,23 @@ pub struct Jaxpr {
     pub return_val: Atom,
 }
 
+impl fmt::Display for Jaxpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{} ->", self.params.join(", "))?;
+        for eqn in &self.equations {
+            let args_str: Vec<String> = eqn.args.iter().map(|a| match a {
+                Atom::Var(v) => v.clone(),
+                Atom::Lit(x) => format!("{}", x),
+            }).collect();
+            writeln!(f, "  {} = {:?}({})", eqn.var, eqn.op, args_str.join(", "))?;
+        }
+        match &self.return_val {
+            Atom::Var(v) => write!(f, "{}", v),
+            Atom::Lit(x) => write!(f, "{}", x),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Float(f64),
@@ -213,8 +230,41 @@ pub fn derivative<F>(f: F, x: f64) -> Value
 where
     F: Fn(Value) -> Value,
 {
-    let (_p, t) = jvp(f, Value::Float(x), Value::Float(1.0));
+    derivative_value(f, Value::Float(x))
+}
+
+/// Compute derivative where x can be any Value (including nested duals for higher-order AD).
+pub fn derivative_value<F>(f: F, x: Value) -> Value
+where
+    F: Fn(Value) -> Value,
+{
+    let (_p, t) = jvp(f, x, Value::Float(1.0));
     t
+}
+
+/// Compute the nth-order derivative of f at x.
+/// For n=0, returns f(x). For n>0, returns d^n f / dx^n evaluated at x.
+pub fn nth_order_derivative<F>(n: usize, f: F, x: f64) -> Value
+where
+    F: Fn(Value) -> Value + Clone + 'static,
+{
+    nth_order_derivative_value(n, f, Value::Float(x))
+}
+
+/// Internal helper for nth_order_derivative that works with Values.
+fn nth_order_derivative_value<F>(n: usize, f: F, x: Value) -> Value
+where
+    F: Fn(Value) -> Value + Clone + 'static,
+{
+    if n == 0 {
+        f(x)
+    } else {
+        let f_clone = f.clone();
+        derivative_value(
+            move |v| nth_order_derivative_value(n - 1, f_clone.clone(), v),
+            x,
+        )
+    }
 }
 
 #[derive(Default)]
@@ -375,5 +425,51 @@ mod tests {
 
         let result = derivative(f, 0.0);
         assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn higher_order_derivatives() {
+        // foo(x) = x * (x + 3) = x^2 + 3x
+        // foo'(x) = 2x + 3
+        // foo''(x) = 2
+        // foo'''(x) = 0
+        // foo''''(x) = 0
+
+        // 0th derivative (just evaluation)
+        let d0 = nth_order_derivative(0, foo, 2.0);
+        assert_eq!(d0, Value::Float(10.0));
+
+        // 1st derivative at x=2: 2*2 + 3 = 7
+        let d1 = nth_order_derivative(1, foo, 2.0);
+        assert_eq!(d1, Value::Float(7.0));
+
+        // 2nd derivative: 2
+        let d2 = nth_order_derivative(2, foo, 2.0);
+        assert_eq!(d2, Value::Float(2.0));
+
+        // 3rd derivative: 0 (foo is only quadratic)
+        let d3 = nth_order_derivative(3, foo, 2.0);
+        assert_eq!(d3, Value::Float(0.0));
+
+        // 4th derivative: 0
+        let d4 = nth_order_derivative(4, foo, 2.0);
+        assert_eq!(d4, Value::Float(0.0));
+    }
+
+    #[test]
+    fn jvp_roundtrip_through_jaxpr() {
+        // Build jaxpr from foo, then differentiate the evaluated jaxpr
+        let jaxpr = build_jaxpr(
+            |mut args| {
+                let x = args.remove(0);
+                foo(x)
+            },
+            1,
+        );
+
+        // JVP through eval_jaxpr should give same result as direct JVP
+        let (p, t) = jvp(|x| eval_jaxpr(&jaxpr, vec![x]), Value::Float(2.0), Value::Float(1.0));
+        assert_eq!(p, Value::Float(10.0));
+        assert_eq!(t, Value::Float(7.0));
     }
 }

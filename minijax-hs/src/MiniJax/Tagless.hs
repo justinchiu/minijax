@@ -29,3 +29,8 @@ class Monad m => JaxSym m where
 -- | Automatic differentiation interface for interpreters that support it.
 class JaxSym m => JaxAD m where
   derivative :: (JaxVal m -> m (JaxVal m)) -> Float -> m (JaxVal m)
+
+  -- | Compute the nth-order derivative of a function at a point.
+  -- Instances that support higher-order AD should override this.
+  nthDerivative :: Int -> (JaxVal m -> m (JaxVal m)) -> Float -> m (JaxVal m)
+  nthDerivative n _ _ = error $ "nthDerivative not implemented for n=" ++ show n

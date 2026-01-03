@@ -112,21 +112,32 @@ spec = do
       primal result `shouldBe` 10.0
       tangent result `shouldBe` 7.0
 
-  describe "Higher-order AD (pending)" $ do
+  describe "Higher-order AD (TaggedDynamic)" $ do
+    -- foo(x) = x * (x + 3) = x^2 + 3x
+    -- foo'(x) = 2x + 3
+    -- foo''(x) = 2
+    -- foo'''(x) = 0
+    -- foo''''(x) = 0
+
     it "should compute 0th-order derivative of foo at x=2" $ do
-      pendingWith "higher-order AD via nested JVP not implemented in Haskell port"
+      -- 0th derivative = f(2) = 2*(2+3) = 10
+      TD.nthDerivativeTagged 0 foo 2.0 `shouldBe` 10.0
 
     it "should compute 1st-order derivative of foo at x=2" $ do
-      pendingWith "higher-order AD via nested JVP not implemented in Haskell port"
+      -- 1st derivative = 2*2 + 3 = 7
+      TD.nthDerivativeTagged 1 foo 2.0 `shouldBe` 7.0
 
     it "should compute 2nd-order derivative of foo at x=2" $ do
-      pendingWith "higher-order AD via nested JVP not implemented in Haskell port"
+      -- 2nd derivative = 2
+      TD.nthDerivativeTagged 2 foo 2.0 `shouldBe` 2.0
 
     it "should compute 3rd-order derivative of foo at x=2" $ do
-      pendingWith "higher-order AD via nested JVP not implemented in Haskell port"
+      -- 3rd derivative = 0 (foo is quadratic)
+      TD.nthDerivativeTagged 3 foo 2.0 `shouldBe` 0.0
 
     it "should compute 4th-order derivative of foo at x=2" $ do
-      pendingWith "higher-order AD via nested JVP not implemented in Haskell port"
+      -- 4th derivative = 0
+      TD.nthDerivativeTagged 4 foo 2.0 `shouldBe` 0.0
 
   describe "Staging (expected failures)" $ do
     it "should stage foo into a jaxpr" $ do
