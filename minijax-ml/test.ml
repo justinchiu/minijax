@@ -6,6 +6,19 @@ let float_eq a b =
   let eps = 1e-9 in
   abs_float (a -. b) < eps
 
+(* Example function: foo(x) = x * (x + 3). *)
+let foo interp x =
+  let y = add interp x (VFloat 3.0) in
+  mul interp x y
+
+(* Perturbation confusion example. *)
+let f interp x =
+  let g _ = x in
+  let should_be_zero =
+    derivative ~base_interpreter:eval_interpreter (fun _ v -> g v) 0.0
+  in
+  mul interp x should_be_zero
+
 let () =
   (* Eval interpreter *)
   let v_add = add eval_interpreter (VFloat 2.0) (VFloat 3.0) in
@@ -13,10 +26,48 @@ let () =
   assert (v_add = VFloat 5.0);
   assert (v_mul = VFloat 6.0);
 
+  (* Eval foo example *)
+  let v_foo = foo eval_interpreter (VFloat 2.0) in
+  assert (v_foo = VFloat 10.0);
+
+  (* Finite difference for foo (approx) *)
+  let x = 2.0 in
+  let eps = 1.0e-5 in
+  let f_eval a =
+    match foo eval_interpreter (VFloat a) with
+    | VFloat v -> v
+    | _ -> assert false
+  in
+  let diff = (f_eval (x +. eps) -. f_eval x) /. eps in
+  assert (abs_float (diff -. 7.000009999913458) < 1.0e-6);
+
+  (* Primal-tangent packing example (approx) *)
+  let v_pack = f_eval 2.00001 in
+  assert (abs_float (v_pack -. 10.0000700001) < 1.0e-9);
+
   (* JVP for foo at x=2, tangent=1 -> (10, 7) *)
   let p, t = jvp ~base_interpreter:eval_interpreter foo (VFloat 2.0) (VFloat 1.0) in
   assert (p = VFloat 10.0);
   assert (t = VFloat 7.0);
+
+  (* JVP for add and mul *)
+  let p_add, t_add =
+    jvp ~base_interpreter:eval_interpreter
+      (fun interp v -> add interp v (VFloat 3.0))
+      (VFloat 2.0)
+      (VFloat 1.0)
+  in
+  assert (p_add = VFloat 5.0);
+  assert (t_add = VFloat 1.0);
+
+  let p_mul, t_mul =
+    jvp ~base_interpreter:eval_interpreter
+      (fun interp v -> mul interp v (VFloat 3.0))
+      (VFloat 2.0)
+      (VFloat 1.0)
+  in
+  assert (p_mul = VFloat 6.0);
+  assert (t_mul = VFloat 3.0);
 
   (* Staging foo into a jaxpr *)
   let jaxpr =
@@ -40,6 +91,17 @@ let () =
 
   (* Eval jaxpr *)
   let result = eval_jaxpr eval_interpreter jaxpr [VFloat 2.0] in
-  match result with
-  | VFloat x -> assert (float_eq x 10.0)
-  | _ -> assert false
+  let result_value =
+    match result with
+    | VFloat x -> x
+    | _ -> 0.0
+  in
+  assert (match result with VFloat _ -> true | _ -> false);
+  assert (float_eq result_value 10.0);
+
+  (* Perturbation confusion should pass with tagged dynamic JVP *)
+  let p_conf, t_conf =
+    jvp ~base_interpreter:eval_interpreter f (VFloat 0.0) (VFloat 1.0)
+  in
+  ignore p_conf;
+  assert (t_conf = VFloat 0.0)

@@ -1,6 +1,6 @@
 (library
  (name minijax)
- (modules minijax))
+ (modules minijax minijax_global minijax_reader))
 
 (test
  (name test)
