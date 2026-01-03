@@ -175,14 +175,18 @@ impl Interpreter for JvpInterpreter {
                 let _guard = set_interpreter(self.prev.clone());
                 match op {
                     Op::Add => {
-                        let p = add(dx.primal.clone(), dy.primal.clone());
-                        let t = add(dx.tangent.clone(), dy.tangent.clone());
+                        let Dual { primal: px, tangent: tx, .. } = dx;
+                        let Dual { primal: py, tangent: ty, .. } = dy;
+                        let p = add(px, py);
+                        let t = add(tx, ty);
                         Self::dual_value(self_interp, p, t)
                     }
                     Op::Mul => {
-                        let p = mul(dx.primal.clone(), dy.primal.clone());
-                        let t1 = mul(dx.primal.clone(), dy.tangent.clone());
-                        let t2 = mul(dx.tangent.clone(), dy.primal.clone());
+                        let Dual { primal: px, tangent: tx, .. } = dx;
+                        let Dual { primal: py, tangent: ty, .. } = dy;
+                        let p = mul(px.clone(), py.clone());
+                        let t1 = mul(px, ty);
+                        let t2 = mul(tx, py);
                         let t = add(t1, t2);
                         Self::dual_value(self_interp, p, t)
                     }
@@ -197,13 +201,12 @@ pub fn jvp<F>(f: F, primal: Value, tangent: Value) -> (Value, Value)
 where
     F: Fn(Value) -> Value,
 {
-    let prev = current_interpreter();
-    let jvp_interpreter = Rc::new(JvpInterpreter::new(prev));
+    let jvp_interpreter = Rc::new(JvpInterpreter::new(current_interpreter()));
     let dual_in = JvpInterpreter::dual_value(jvp_interpreter.clone(), primal, tangent);
     let _guard = set_interpreter(jvp_interpreter.clone());
     let result = f(dual_in);
-    let dual_out = jvp_interpreter.lift(&result);
-    (dual_out.primal.clone(), dual_out.tangent.clone())
+    let Dual { primal, tangent, .. } = jvp_interpreter.lift(&result);
+    (primal, tangent)
 }
 
 pub fn derivative<F>(f: F, x: f64) -> Value
