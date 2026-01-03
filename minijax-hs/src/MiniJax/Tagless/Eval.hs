@@ -3,7 +3,7 @@
 
 -- | Evaluation interpreter: performs ordinary arithmetic on concrete values.
 --
--- This is the simplest interpreter, evaluating operations directly on 'Float'
+-- This is the simplest interpreter, evaluating operations directly on 'Double'
 -- values. Use this for normal computation without any transformations.
 module MiniJax.Tagless.Eval
   ( Eval(..)
@@ -22,7 +22,7 @@ runEval :: Eval a -> a
 runEval = runIdentity . unEval
 
 instance JaxSym Eval where
-  type JaxVal Eval = Float
+  type JaxVal Eval = Double
   add x y = return (x + y)
   mul x y = return (x * y)
   lit x = return x

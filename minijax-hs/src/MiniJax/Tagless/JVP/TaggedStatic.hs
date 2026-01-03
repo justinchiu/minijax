@@ -42,11 +42,11 @@ runTaggedStaticDual :: (forall s. TaggedStatic s (TaggedDual s)) -> Common.Dual
 runTaggedStaticDual m = unTaggedDual (runIdentity (unTaggedStatic (m :: TaggedStatic () (TaggedDual ()))))
 
 -- | Run a static computation and return the tangent component.
-runTaggedStaticTangent :: (forall s. TaggedStatic s (TaggedDual s)) -> Float
+runTaggedStaticTangent :: (forall s. TaggedStatic s (TaggedDual s)) -> Double
 runTaggedStaticTangent m = Common.tangent (runTaggedStaticDual m)
 
 -- | Construct a tagged dual number.
-taggedDual :: Float -> Float -> TaggedStatic s (TaggedDual s)
+taggedDual :: Double -> Double -> TaggedStatic s (TaggedDual s)
 taggedDual p t = return (TaggedDual (Common.Dual p t))
 
 -- | Lift a dual from another tag as a constant in the current tag.
@@ -54,10 +54,10 @@ liftTagged :: TaggedDual s -> TaggedStatic t (TaggedDual t)
 liftTagged d = taggedDual (primal d) 0.0
 
 -- | Accessors for tagged dual numbers.
-primal :: TaggedDual s -> Float
+primal :: TaggedDual s -> Double
 primal = Common.primal . unTaggedDual
 
-tangent :: TaggedDual s -> Float
+tangent :: TaggedDual s -> Double
 tangent = Common.tangent . unTaggedDual
 
 instance JaxSym (TaggedStatic s) where

@@ -34,7 +34,7 @@ import MiniJax.Tagless
 -- | Values that flow through the TaggedDynamic interpreter.
 -- Can be a plain float or a tagged dual number (for nesting).
 data TaggedValue
-  = TVFloat Float
+  = TVFloat Double
   | TVDual TaggedDual
   deriving (Eq, Show)
 
@@ -46,16 +46,16 @@ data TaggedDual = TaggedDual
   , tangentV :: TaggedValue
   } deriving (Eq)
 
--- | Extract primal as Float (only works for non-nested duals)
-primal :: TaggedDual -> Float
+-- | Extract primal as Double (only works for non-nested duals)
+primal :: TaggedDual -> Double
 primal d = valueToFloat (primalV d)
 
--- | Extract tangent as Float (only works for non-nested duals)
-tangent :: TaggedDual -> Float
+-- | Extract tangent as Double (only works for non-nested duals)
+tangent :: TaggedDual -> Double
 tangent d = valueToFloat (tangentV d)
 
--- | Convert TaggedValue to Float
-valueToFloat :: TaggedValue -> Float
+-- | Convert TaggedValue to Double
+valueToFloat :: TaggedValue -> Double
 valueToFloat (TVFloat x) = x
 valueToFloat (TVDual d) = valueToFloat (primalV d)
 
@@ -63,6 +63,26 @@ valueToFloat (TVDual d) = valueToFloat (primalV d)
 zeroLike :: TaggedValue -> TaggedValue
 zeroLike (TVFloat _) = TVFloat 0.0
 zeroLike (TVDual d) = TVDual $ TaggedDual (tag d) (zeroLike (primalV d)) (zeroLike (tangentV d))
+
+oneLike :: TaggedValue -> TaggedValue
+oneLike (TVFloat _) = TVFloat 1.0
+oneLike (TVDual d) =
+  let p = oneLike (primalV d)
+      t = zeroLike (tangentV d)
+  in TVDual $ TaggedDual (tag d) p t
+
+promoteScalarValue :: Double -> TaggedValue -> TaggedValue
+promoteScalarValue x (TVFloat _) = TVFloat x
+promoteScalarValue x (TVDual d) =
+  let p = promoteScalarValue x (primalV d)
+      t = zeroLike (tangentV d)
+  in TVDual $ TaggedDual (tag d) p t
+
+promoteScalar :: Double -> TaggedDual -> TaggedValue
+promoteScalar x d =
+  let p = promoteScalarValue x (primalV d)
+      t = zeroLike (tangentV d)
+  in TVDual $ TaggedDual (tag d) p t
 
 instance Show TaggedDual where
   show (TaggedDual _ p t) =
@@ -94,11 +114,11 @@ runTaggedDual :: TaggedDynamic TaggedDual -> TaggedDual
 runTaggedDual = runTaggedDynamic
 
 -- | Run a TaggedDynamic computation and return the tangent component.
-runTaggedTangent :: TaggedDynamic TaggedDual -> Float
+runTaggedTangent :: TaggedDynamic TaggedDual -> Double
 runTaggedTangent m = tangent (runTaggedDual m)
 
--- | Create a tagged dual number with Float primal and tangent
-taggedDual :: Float -> Float -> TaggedDynamic TaggedDual
+-- | Create a tagged dual number with Double primal and tangent
+taggedDual :: Double -> Double -> TaggedDynamic TaggedDual
 taggedDual p t = taggedDualValue (TVFloat p) (TVFloat t)
 
 -- | Create a tagged dual number with TaggedValue primal and tangent (for nesting)
@@ -123,7 +143,8 @@ addValue (TVDual dx) (TVDual dy) =
   -- When adding nested duals, we add component-wise
   -- This only works if they have the same tag structure
   TVDual $ TaggedDual (tag dx) (addValue (primalV dx) (primalV dy)) (addValue (tangentV dx) (tangentV dy))
-addValue _ _ = error "addValue: mismatched value types"
+addValue (TVFloat x) (TVDual dy) = addValue (promoteScalar x dy) (TVDual dy)
+addValue (TVDual dx) (TVFloat y) = addValue (TVDual dx) (promoteScalar y dx)
 
 -- | Multiply two TaggedValues (for nested AD)
 mulValue :: TaggedValue -> TaggedValue -> TaggedValue
@@ -137,7 +158,8 @@ mulValue (TVDual dx) (TVDual dy) =
       p = mulValue px py
       t = addValue (mulValue px ty) (mulValue tx py)
   in TVDual $ TaggedDual (tag dx) p t
-mulValue _ _ = error "mulValue: mismatched value types"
+mulValue (TVFloat x) (TVDual dy) = mulValue (promoteScalar x dy) (TVDual dy)
+mulValue (TVDual dx) (TVFloat y) = mulValue (TVDual dx) (promoteScalar y dx)
 
 instance JaxSym TaggedDynamic where
   type JaxVal TaggedDynamic = TaggedDual
@@ -189,32 +211,35 @@ jvpTaggedValue f primalIn tangentIn = unsafePerformIO $ do
 -- | Compute derivative with TaggedValue input (for higher-order AD)
 derivativeTaggedValue :: (TaggedDual -> TaggedDynamic TaggedDual) -> TaggedValue -> TaggedValue
 derivativeTaggedValue f v =
-  let (_, t) = jvpTaggedValue f v (TVFloat 1.0)
+  let (_, t) = jvpTaggedValue f v (oneLike v)
   in t
 
--- | Compute nth derivative using nested TaggedValues.
--- The key insight: for higher-order AD, we pass TaggedValues through recursion,
--- allowing the dual number structure to nest properly.
-nthDerivativeTaggedValue :: Int -> (TaggedDual -> TaggedDynamic TaggedDual) -> TaggedValue -> TaggedValue
-nthDerivativeTaggedValue n f v
-  | n == 0    =
-      -- Just evaluate f at v
-      let result = unsafePerformIO $ do
-            newTag <- newUnique
-            let state = TaggedDynamicState { interpreterTag = newTag, previousInterpreter = () }
-                TaggedDynamic m = do
-                  let dualIn = TaggedDual newTag v (zeroLike v)
-                  r <- f dualIn
-                  liftTagged r
-            return (runReader m state)
-      in primalV result
-  | otherwise =
-      -- Differentiate the function that computes (n-1)th derivative
-      derivativeTaggedValue (\u -> do
-        let innerResult = nthDerivativeTaggedValue (n - 1) f (TVDual u)
-        taggedDualValue innerResult (TVFloat 0.0)
-      ) v
+buildNestedValue :: Int -> Double -> TaggedValue
+buildNestedValue 0 x = TVFloat x
+buildNestedValue n x =
+  let inner = buildNestedValue (n - 1) x
+      innerTag = unsafePerformIO newUnique
+  in TVDual (TaggedDual innerTag inner (oneLike inner))
+
+extractNthTangent :: Int -> TaggedDual -> TaggedValue
+extractNthTangent 1 d = tangentV d
+extractNthTangent n d =
+  case tangentV d of
+    TVDual inner -> extractNthTangent (n - 1) inner
+    TVFloat _ -> error "extractNthTangent: unexpected scalar tangent"
 
 -- | Standalone function for higher-order derivatives (exported for testing)
-nthDerivativeTagged :: Int -> (TaggedDual -> TaggedDynamic TaggedDual) -> Float -> Float
-nthDerivativeTagged n f x = valueToFloat $ nthDerivativeTaggedValue n f (TVFloat x)
+nthDerivativeTagged :: Int -> (TaggedDual -> TaggedDynamic TaggedDual) -> Double -> Double
+nthDerivativeTagged n f x
+  | n < 0 = error "nthDerivativeTagged: n must be non-negative"
+  | n == 0 =
+      let result = runTaggedDual $ do
+            input <- taggedDual x 0.0
+            f input
+      in valueToFloat (primalV result)
+  | otherwise =
+      let inner = buildNestedValue (n - 1) x
+          result = runTaggedDual $ do
+            input <- taggedDualValue inner (oneLike inner)
+            f input
+      in valueToFloat (extractNthTangent n result)

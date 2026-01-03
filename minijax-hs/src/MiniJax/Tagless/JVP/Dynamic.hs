@@ -38,11 +38,11 @@ runJVPDual :: JVP Dual -> Dual
 runJVPDual = runJVP
 
 -- | Run a JVP computation and return the tangent component.
-runJVPTangent :: JVP Dual -> Float
+runJVPTangent :: JVP Dual -> Double
 runJVPTangent m = tangent (runJVPDual m)
 
 -- | Construct an untagged dual number.
-dual :: Float -> Float -> Dual
+dual :: Double -> Double -> Dual
 dual = Dual
 
 instance JaxSym JVP where

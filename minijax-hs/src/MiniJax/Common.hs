@@ -21,13 +21,13 @@ data Op = Add | Mul
 type Var = String
 
 -- | Atoms are either variables or literals
-data Atom = VarAtom Var | LitAtom Float
+data Atom = VarAtom Var | LitAtom Double
   deriving (Show, Eq)
 
 -- | Dual numbers for automatic differentiation
 data Dual = Dual
-  { primal :: Float
-  , tangent :: Float
+  { primal :: Double
+  , tangent :: Double
   } deriving (Show, Eq)
 
 -- | Equation in the IR
@@ -46,7 +46,7 @@ data Jaxpr = Jaxpr
 
 -- | Expression AST for the REPL
 data Expr
-  = Lit Float        -- ^ Literal value
+  = Lit Double       -- ^ Literal value
   | EAdd Expr Expr   -- ^ Addition
   | EMul Expr Expr   -- ^ Multiplication
   deriving (Show, Eq)
