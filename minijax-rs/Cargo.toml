@@ -1,0 +1,8 @@
+[package]
+name = "minijax-rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "minijax"
+path = "src/lib.rs"
