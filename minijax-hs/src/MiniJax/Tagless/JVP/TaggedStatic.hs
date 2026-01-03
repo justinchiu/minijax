@@ -5,9 +5,42 @@
 
 -- | Static (type-level tagged) JVP interpreter.
 --
+-- = Design: Type-Level Tags (Phantom Types)
+--
 -- This interpreter avoids perturbation confusion by threading a phantom type
--- parameter through dual numbers. Each run of 'runStatic' chooses a fresh type
--- parameter, so duals from different runs cannot be mixed.
+-- parameter through dual numbers. Each differentiation context has a unique
+-- type tag @s@:
+--
+-- @
+-- newtype TaggedStatic s a = TaggedStatic (Identity a)
+-- newtype TaggedDual s = TaggedDual Dual
+-- @
+--
+-- The phantom @s@ ensures duals from different contexts have incompatible types:
+--
+-- @
+-- runTaggedStatic :: (forall s. TaggedStatic s a) -> a
+-- @
+--
+-- The @forall s@ ensures the computation cannot depend on a specific tag,
+-- which would allow mixing duals from different contexts.
+--
+-- = Type Safety vs Flexibility
+--
+-- This approach catches perturbation confusion at /compile time/, which is
+-- the most type-safe option. However, it has limitations:
+--
+-- * Requires rank-2 types
+-- * Uses @unsafeCoerce@ internally for nested differentiation
+-- * Higher-order AD is more complex than with runtime tags
+--
+-- For simpler higher-order AD, see 'MiniJax.Tagless.JVP.TaggedDynamic'.
+--
+-- = Comparison to OCaml's Module System
+--
+-- This is analogous to the OCaml tagless-final approach with fresh type tags
+-- via functor application (see @minijax_tagged.ml@), but uses Haskell's
+-- rank-2 polymorphism instead of generative functors.
 module MiniJax.Tagless.JVP.TaggedStatic
   ( TaggedStatic
   , TaggedDual

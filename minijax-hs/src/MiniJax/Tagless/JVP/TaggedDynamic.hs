@@ -4,12 +4,44 @@
 
 -- | Dynamically tagged JVP interpreter.
 --
--- This module implements forward-mode AD using runtime tags to avoid perturbation
--- confusion. Each JVP interpreter instance has a unique tag, and dual numbers
--- are tagged with the interpreter that created them. When lifting values, if a
--- dual number has a different tag, it's treated as a constant (tangent = 0).
+-- = Design: Runtime Tags for Perturbation Safety
 --
--- This is similar to the Python version in autodidax2.md.
+-- This module implements forward-mode AD using runtime tags to avoid
+-- perturbation confusion. It closely follows the Python version in autodidax2.md.
+--
+-- Each JVP interpreter instance has a unique tag ('Data.Unique.Unique'), and
+-- dual numbers carry the tag of their creating interpreter:
+--
+-- @
+-- data TaggedDual = TaggedDual
+--   { tag     :: Unique
+--   , primalV :: TaggedValue
+--   , tangentV :: TaggedValue
+--   }
+-- @
+--
+-- = Avoiding Perturbation Confusion
+--
+-- When lifting a value to a dual, we check if it's already a dual from the
+-- /current/ interpreter. If not, it's treated as a constant:
+--
+-- @
+-- lift v = case v of
+--   TVDual d | tag d == currentTag -> d
+--   _ -> TaggedDual currentTag v (zeroLike v)  -- constant!
+-- @
+--
+-- This ensures that duals from outer differentiation contexts are correctly
+-- treated as constants in inner differentiations.
+--
+-- = Higher-Order AD
+--
+-- Values are 'TaggedValue', which can be either @TVFloat Double@ or
+-- @TVDual TaggedDual@. This nesting enables higher-order AD: when we
+-- differentiate a derivative, the inner dual's components are themselves
+-- duals from the outer differentiation.
+--
+-- See 'nthDerivativeTagged' for computing nth-order derivatives.
 module MiniJax.Tagless.JVP.TaggedDynamic
   ( TaggedDynamic
   , TaggedDual(..)

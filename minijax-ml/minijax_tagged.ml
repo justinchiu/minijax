@@ -1,4 +1,48 @@
-(* MiniJax-ML (type-indexed tags): tagless-final with static JVP tags. *)
+(* MiniJax-ML: a minimal JAX-like interpreter in OCaml.
+
+   Design: Tagless Final with Type-Level Tags
+   ==========================================
+   This implementation uses OCaml's module system (tagless final style) combined
+   with type-level tags to avoid perturbation confusion in higher-order AD.
+
+   Key ideas:
+
+   1. TAGLESS FINAL: Operations are defined by a module signature (SYM):
+
+        module type SYM = sig
+          type t
+          val add : t -> t -> t
+          val mul : t -> t -> t
+          val lit : float -> t
+        end
+
+      Different interpreters implement this signature with different `t`:
+      - Eval: t = float
+      - JVP: t = (Tag.t, Base.t) dual
+
+   2. TYPE-LEVEL TAGS: Each JVP layer introduces a fresh phantom type Tag.t:
+
+        module Jvp (Base : SYM) (Tag : sig type t end) : sig
+          include SYM with type t = (Tag.t, Base.t) dual
+          ...
+        end
+
+      The phantom type tag ensures dual numbers from different differentiation
+      contexts cannot be mixed, preventing perturbation confusion at compile time.
+
+   3. NESTED DIFFERENTIATION: Higher-order AD works by stacking JVP modules:
+
+        module J1 = Jvp(Eval)(Tag1)      (* first derivative *)
+        module J2 = Jvp(J1)(Tag2)        (* second derivative *)
+
+   Advantages:
+   - Type-safe: perturbation confusion is a type error
+   - No runtime overhead for tag checking
+   - Elegant use of OCaml's module system
+
+   Disadvantages:
+   - More complex types
+   - Programs must be polymorphic over the SYM functor *)
 
 type op = Add | Mul
 

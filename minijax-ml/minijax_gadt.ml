@@ -1,4 +1,44 @@
-(* MiniJax-ML (GADT AST): a typed expression language with eval, JVP, and staging. *)
+(* MiniJax-ML: a minimal JAX-like interpreter in OCaml.
+
+   Design: GADT Expression AST
+   ===========================
+   This implementation uses a GADT (Generalized Algebraic Data Type) to represent
+   expressions as an explicit AST:
+
+     type _ expr =
+       | Lit : float -> float expr
+       | Var : float expr
+       | Add : float expr * float expr -> float expr
+       | Mul : float expr * float expr -> float expr
+
+   Programs are data structures that can be interpreted in different ways:
+
+     let foo_expr = Mul (Var, Add (Var, Lit 3.0))
+
+   The interpreter record provides different semantics:
+
+     type interpreter =
+       { add : value -> value -> value
+       ; mul : value -> value -> value
+       ; lit : float -> value
+       }
+
+   To evaluate: `eval foo_expr ~x:2.0` traverses the AST, dispatching operations
+   to the current interpreter.
+
+   Comparison to Other Approaches:
+   - Unlike tagless final (minijax_tagged.ml), the AST is explicit data
+   - Unlike dynamic dispatch (minijax_global.ml), programs are static structures
+   - Staging is trivial: just walk the AST and generate IR
+
+   Advantages:
+   - AST can be inspected, optimized, serialized
+   - Easy to implement pattern-matching transformations
+   - Type parameter ensures well-typed expressions
+
+   Disadvantages:
+   - Fixed set of operations (closed world)
+   - Adding new interpreters is easy; adding new operations requires AST changes *)
 
 type op = Add | Mul
 

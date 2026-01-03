@@ -1,5 +1,42 @@
-(* MiniJax-ML (reader monad with let-star): a minimal JAX-like interpreter in OCaml.
-   Mirrors autodidax2.md, passing interpreter via a Reader monad. *)
+(* MiniJax-ML: a minimal JAX-like interpreter in OCaml.
+
+   Design: Reader Monad with Let-Syntax
+   ====================================
+   This implementation uses a Reader monad to thread the current interpreter
+   implicitly, combined with OCaml's let-syntax (let*) for ergonomic monadic code.
+
+   The Reader monad:
+
+     type 'a reader = interpreter -> 'a
+
+     let bind (m : 'a reader) (f : 'a -> 'b reader) : 'b reader =
+       fun interp -> f (m interp) interp
+
+     let ( let* ) = bind
+
+   Operations are monadic, returning readers:
+
+     let add x y : value reader =
+       fun interp -> interp.interpret_op Add [x; y]
+
+   User programs use let* syntax for implicit interpreter threading:
+
+     let foo x : value reader =
+       let* y = add x (VFloat 3.0) in
+       mul x y
+
+   This gives the best of both worlds:
+   - Clean syntax like global state (minijax_global.ml)
+   - Pure semantics like explicit passing (minijax.ml)
+
+   Advantages:
+   - No mutable state
+   - Clean monadic syntax with let*
+   - Interpreter is implicit but explicit in the types
+
+   Disadvantages:
+   - Requires understanding monads
+   - Slightly more ceremony than direct style *)
 
 type op = Add | Mul
 

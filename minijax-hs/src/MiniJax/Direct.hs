@@ -1,11 +1,41 @@
 {-# LANGUAGE BangPatterns #-}
 
--- | Direct-style MiniJax implementation, mirroring OCaml/Python.
+-- | Direct-style MiniJax implementation, mirroring OCaml\/Python.
 --
--- This is simpler than the tagless final version because:
--- 1. One Value type for all interpreters (natural nesting)
--- 2. Interpreter is just a record of functions
--- 3. Higher-order AD falls out naturally
+-- = Design: Reader Monad with Value Nesting
+--
+-- This implementation mirrors the OCaml\/Python style more closely than the
+-- tagless final approach. Key design choices:
+--
+-- 1. __One Value type__: All interpreters work with the same 'Value' type,
+--    which can be @VFloat@, @VDual@, or @VAtom@. This enables natural nesting
+--    of dual numbers for higher-order AD.
+--
+-- 2. __Interpreter as record__: The 'Interpreter' type is a simple record
+--    with a function for each operation, rather than a type class.
+--
+-- 3. __Reader monad__: Operations run in @ReaderT Interpreter@ to access
+--    the current interpreter, similar to implicit threading in the Python
+--    version but pure.
+--
+-- = Perturbation Confusion
+--
+-- Each 'Dual' number carries an @Int@ tag identifying its creating interpreter.
+-- The 'lift' operation checks this tag: if a Dual has a /different/ tag, it's
+-- treated as a constant (tangent = 0). This prevents perturbation confusion
+-- in higher-order differentiation.
+--
+-- = Comparison to Tagless Final
+--
+-- Unlike 'MiniJax.Tagless', this approach:
+--
+-- * Uses runtime dispatch (slower, more flexible)
+-- * Supports natural higher-order AD via 'Value' nesting
+-- * Has simpler types (no associated type families)
+--
+-- For simple forward-mode AD, the tagless final version is more type-safe.
+-- For higher-order AD and more complex transformations, this direct style
+-- may be easier to extend.
 module MiniJax.Direct
   ( -- * Types
     Op(..)
@@ -38,18 +68,21 @@ module MiniJax.Direct
   ) where
 
 import Control.Monad.Reader
-import Data.IORef
-import System.IO.Unsafe (unsafePerformIO)
+import Control.Monad.State.Strict
 import qualified Data.Map.Strict as Map
 
--- Use a global counter for unique tags (safer than Unique with unsafePerformIO)
-{-# NOINLINE tagCounter #-}
-tagCounter :: IORef Int
-tagCounter = unsafePerformIO $ newIORef 0
+data JaxState = JaxState
+  { nextTag :: !Int
+  , nextVar :: !Int
+  , equations :: [Equation]
+  }
 
-{-# NOINLINE freshTag #-}
-freshTag :: IO Int
-freshTag = atomicModifyIORef' tagCounter (\n -> (n + 1, n + 1))
+initialJaxState :: JaxState
+initialJaxState = JaxState
+  { nextTag = 0
+  , nextVar = 0
+  , equations = []
+  }
 
 -- | Primitive operations
 data Op = Add | Mul
@@ -95,15 +128,15 @@ data Jaxpr = Jaxpr
 
 -- | Interpreter is a record of how to handle each operation
 data Interpreter = Interpreter
-  { interpOp :: Op -> Value -> Value -> Value
+  { interpOp :: Op -> Value -> Value -> Jax Value
   }
 
 -- | Computations run in a Reader over the current interpreter
-type Jax = Reader Interpreter
+type Jax = ReaderT Interpreter (State JaxState)
 
 -- | Run a Jax computation with a given interpreter
 runJax :: Interpreter -> Jax a -> a
-runJax interp m = runReader m interp
+runJax interp m = evalState (runReaderT m interp) initialJaxState
 
 -- | Run a computation with a different interpreter
 withInterpreter :: Interpreter -> Jax a -> Jax a
@@ -111,8 +144,12 @@ withInterpreter = local . const
 
 -- | Binary operations dispatch to current interpreter
 add, mul :: Value -> Value -> Jax Value
-add x y = asks (\i -> interpOp i Add x y)
-mul x y = asks (\i -> interpOp i Mul x y)
+add x y = do
+  i <- ask
+  interpOp i Add x y
+mul x y = do
+  i <- ask
+  interpOp i Mul x y
 
 -- | Lift a literal (interpreter-independent)
 lit :: Double -> Value
@@ -138,8 +175,8 @@ valueToDouble (VAtom _)  = error "valueToDouble: cannot convert atom"
 evalInterp :: Interpreter
 evalInterp = Interpreter evalOp
   where
-    evalOp Add (VFloat x) (VFloat y) = VFloat (x + y)
-    evalOp Mul (VFloat x) (VFloat y) = VFloat (x * y)
+    evalOp Add (VFloat x) (VFloat y) = return (VFloat (x + y))
+    evalOp Mul (VFloat x) (VFloat y) = return (VFloat (x * y))
     evalOp _ _ _ = error "evalInterp: expected VFloat arguments"
 
 --------------------------------------------------------------------------------
@@ -157,46 +194,42 @@ makeJvpInterp myTag prev = Interpreter jvpOp
     liftToDual v = Dual myTag v (zeroLike v)
 
     -- Run an operation in the previous interpreter
-    prevOp :: Op -> Value -> Value -> Value
+    prevOp :: Op -> Value -> Value -> Jax Value
     prevOp = interpOp prev
 
-    jvpOp :: Op -> Value -> Value -> Value
-    jvpOp op x y =
+    jvpOp :: Op -> Value -> Value -> Jax Value
+    jvpOp op x y = do
       let dx = liftToDual x
           dy = liftToDual y
           px = primalV dx
           py = primalV dy
           tx = tangentV dx
           ty = tangentV dy
-      in case op of
-        Add ->
-          let p = prevOp Add px py
-              t = prevOp Add tx ty
-          in VDual (Dual myTag p t)
-        Mul ->
-          let p  = prevOp Mul px py
-              t1 = prevOp Mul px ty
-              t2 = prevOp Mul tx py
-              t  = prevOp Add t1 t2
-          in VDual (Dual myTag p t)
+      case op of
+        Add -> do
+          p <- prevOp Add px py
+          t <- prevOp Add tx ty
+          return (VDual (Dual myTag p t))
+        Mul -> do
+          p <- prevOp Mul px py
+          t1 <- prevOp Mul px ty
+          t2 <- prevOp Mul tx py
+          t <- prevOp Add t1 t2
+          return (VDual (Dual myTag p t))
 
 -- | Compute JVP of a function
 {-# NOINLINE jvp #-}
 jvp :: (Value -> Jax Value) -> Value -> Value -> Jax (Value, Value)
 jvp f primal tangent = do
   prev <- ask
-  -- Wrap entire computation in unsafePerformIO to ensure freshTag runs each time
-  -- The $! forces evaluation to trigger the IO action
-  return $! unsafePerformIO $ do
-    myTag <- freshTag
-    let jvpInterp = makeJvpInterp myTag prev
-        dualIn = VDual (Dual myTag primal tangent)
-        result = runJax jvpInterp (f dualIn)
-        -- Lift result in case f returned a constant
-        dualOut = case result of
-          VDual d | dualTag d == myTag -> d
-          v -> Dual myTag v (zeroLike v)
-    return (primalV dualOut, tangentV dualOut)
+  myTag <- freshTag
+  let jvpInterp = makeJvpInterp myTag prev
+      dualIn = VDual (Dual myTag primal tangent)
+  result <- withInterpreter jvpInterp (f dualIn)
+  let dualOut = case result of
+        VDual d | dualTag d == myTag -> d
+        v -> Dual myTag v (zeroLike v)
+  return (primalV dualOut, tangentV dualOut)
 
 -- | Compute derivative of f at x
 derivative :: (Value -> Jax Value) -> Double -> Jax Value
@@ -239,33 +272,24 @@ buildJaxpr numArgs f =
 -- | Run a Jax computation with staging, returning result and equations
 {-# NOINLINE runStaging #-}
 runStaging :: Int -> Jax Value -> (Value, [Equation])
-runStaging startCounter m = unsafePerformIO $ do
-  counterRef <- newIORef startCounter
-  eqnsRef <- newIORef []
-
+runStaging startCounter m =
   let toAtom :: Value -> Atom
       toAtom (VAtom a)  = a
       toAtom (VFloat x) = LitAtom x
       toAtom (VDual _)  = error "cannot stage dual number"
 
-      -- CRITICAL: Force evaluation of arguments BEFORE incrementing counter
-      -- This ensures nested unsafePerformIO from argument evaluation happens first
-      stageOp :: Op -> Value -> Value -> Value
-      stageOp op x y =
-        let !xAtom = toAtom x  -- Force x first (may trigger nested staging)
-            !yAtom = toAtom y  -- Force y second (may trigger nested staging)
-        in unsafePerformIO $ do
-          n <- atomicModifyIORef' counterRef (\c -> (c + 1, c + 1))
-          let v = "v_" ++ show n
-              eqn = Equation v op [xAtom, yAtom]
-          atomicModifyIORef' eqnsRef (\es -> (es ++ [eqn], ()))
-          return $! VAtom (VarAtom v)
+      stageOp :: Op -> Value -> Value -> Jax Value
+      stageOp op x y = do
+        let !xAtom = toAtom x
+            !yAtom = toAtom y
+        v <- freshVar
+        modify' (\st' -> st' { equations = equations st' ++ [Equation v op [xAtom, yAtom]] })
+        return (VAtom (VarAtom v))
 
       interp = Interpreter stageOp
-
-  let !result = runReader m interp
-  eqns <- readIORef eqnsRef
-  return (result, eqns)
+      initial = initialJaxState { nextVar = startCounter, equations = [] }
+      (result, st) = runState (runReaderT m interp) initial
+  in (result, equations st)
 
 -- | Evaluate a Jaxpr
 evalJaxpr :: Jaxpr -> [Value] -> Jax Value
@@ -277,10 +301,27 @@ evalJaxpr jaxpr args = do
       evalAtom env (VarAtom v) = env Map.! v
 
   interp <- ask
-  let go env [] = evalAtom env (jaxprReturn jaxpr)
-      go env (Equation v op atoms : rest) =
-        let [a1, a2] = map (evalAtom env) atoms
-            result = interpOp interp op a1 a2
-        in go (Map.insert v result env) rest
+  let go env [] = return (evalAtom env (jaxprReturn jaxpr))
+      go env (Equation v op atoms : rest) = do
+        case map (evalAtom env) atoms of
+          [a1, a2] -> do
+            result <- interpOp interp op a1 a2
+            go (Map.insert v result env) rest
+          _ -> error "evalJaxpr: expected two arguments"
 
-  return $ go env0 (jaxprEqns jaxpr)
+  go env0 (jaxprEqns jaxpr)
+
+freshTag :: Jax Int
+freshTag = do
+  st <- get
+  let next = nextTag st + 1
+  put st { nextTag = next }
+  return next
+
+freshVar :: Jax String
+freshVar = do
+  st <- get
+  let next = nextVar st + 1
+      v = "v_" ++ show next
+  put st { nextVar = next }
+  return v

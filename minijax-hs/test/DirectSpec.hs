@@ -76,7 +76,10 @@ spec = do
 
     describe "Staging" $ do
       it "should stage foo into a Jaxpr" $ do
-        let jaxpr = buildJaxpr 1 $ \[x] -> foo x
+        let jaxpr = buildJaxpr 1 $ \args ->
+              case args of
+                [x] -> foo x
+                _ -> error "expected one argument"
         jaxprParams jaxpr `shouldBe` ["v_1"]
         jaxprEqns jaxpr `shouldBe`
           [ Equation "v_2" Add [VarAtom "v_1", LitAtom 3]
@@ -85,12 +88,18 @@ spec = do
         jaxprReturn jaxpr `shouldBe` VarAtom "v_3"
 
       it "should evaluate a Jaxpr" $ do
-        let jaxpr = buildJaxpr 1 $ \[x] -> foo x
+        let jaxpr = buildJaxpr 1 $ \args ->
+              case args of
+                [x] -> foo x
+                _ -> error "expected one argument"
             result = runJax evalInterp $ evalJaxpr jaxpr [lit 2]
         result `shouldBe` VFloat 10
 
       it "should differentiate through evalJaxpr" $ do
-        let jaxpr = buildJaxpr 1 $ \[x] -> foo x
+        let jaxpr = buildJaxpr 1 $ \args ->
+              case args of
+                [x] -> foo x
+                _ -> error "expected one argument"
             (p, t) = runJax evalInterp $ jvp (\x -> evalJaxpr jaxpr [x]) (lit 2) (lit 1)
         p `shouldBe` VFloat 10
         t `shouldBe` VFloat 7

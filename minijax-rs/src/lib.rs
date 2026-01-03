@@ -1,26 +1,64 @@
 //! MiniJax-RS: a minimal JAX-like interpreter in Rust.
 //!
-//! Mirrors autodidax2.md: eval, forward-mode JVP, and staging to a tiny IR.
+//! # Overview
+//!
+//! This module implements a minimal version of JAX's core abstractions in Rust,
+//! following the approach from autodidax2.md. It demonstrates how to build a
+//! system that can:
+//! - Evaluate arithmetic expressions (eval interpreter)
+//! - Compute derivatives via forward-mode AD (JVP interpreter)
+//! - Stage programs into an intermediate representation (staging interpreter)
+//!
+//! # Design: Context-Sensitive Interpretation
+//!
+//! The key insight is that JAX operations like `add` and `mul` are not fixed
+//! functions—they dispatch to the "current interpreter" stored in thread-local
+//! state. This allows the same user program to be:
+//! - Evaluated directly on floats
+//! - Differentiated by interpreting values as dual numbers
+//! - Staged to IR by interpreting values as symbolic atoms
+//!
+//! # Perturbation Confusion
+//!
+//! In higher-order AD, we must distinguish dual numbers from different
+//! differentiation contexts. Each `Dual` carries a pointer to its creating
+//! interpreter, and `lift` checks this to avoid "perturbation confusion"
+//! where a constant appears to have a non-zero derivative.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
+// =============================================================================
+// Primitive Operations
+// =============================================================================
+
+/// The primitive operations in our language.
+/// In a full implementation, this would include the entire NumPy API.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
     Add,
     Mul,
 }
 
+// =============================================================================
+// Intermediate Representation (Jaxpr)
+// =============================================================================
+
+/// Variable names in our IR.
 pub type Var = String;
 
+/// Atoms are the arguments to operations in Jaxpr.
+/// They can be either variables (references to previous results) or literals.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Atom {
     Var(Var),
     Lit(f64),
 }
 
+/// A single equation/instruction in our IR.
+/// Example: `v_3 = Add(v_1, v_2)` binds the result of adding v_1 and v_2 to v_3.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Equation {
     pub var: Var,
@@ -28,6 +66,20 @@ pub struct Equation {
     pub args: Vec<Atom>,
 }
 
+/// Jaxpr (JAX expression) - our intermediate representation.
+///
+/// A Jaxpr represents a function in ANF (A-normal form):
+/// - `params`: the input variables
+/// - `equations`: a sequence of let-bindings
+/// - `return_val`: the output atom
+///
+/// Example for `foo(x) = x * (x + 3)`:
+/// ```text
+/// v_1 ->
+///   v_2 = Add(v_1, 3.0)
+///   v_3 = Mul(v_1, v_2)
+/// v_3
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct Jaxpr {
     pub params: Vec<Var>,
@@ -52,6 +104,20 @@ impl fmt::Display for Jaxpr {
     }
 }
 
+// =============================================================================
+// Values
+// =============================================================================
+
+/// Values that flow through interpreters.
+///
+/// The key to our design is that `Value` can represent different things
+/// depending on the current interpreter:
+/// - `Float`: concrete numeric values (used by EvalInterpreter)
+/// - `Atom`: symbolic variables (used by StageInterpreter)
+/// - `Dual`: primal-tangent pairs (used by JvpInterpreter)
+///
+/// Crucially, `Dual` can contain nested `Value`s, enabling higher-order AD
+/// where we differentiate functions that themselves compute derivatives.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Float(f64),
@@ -59,10 +125,22 @@ pub enum Value {
     Dual(Box<Dual>),
 }
 
+/// A dual number for forward-mode automatic differentiation.
+///
+/// Mathematically, a dual number is `primal + tangent * ε` where ε² = 0.
+/// Propagating these through arithmetic gives us derivatives via the chain rule.
+///
+/// The `interpreter` field is crucial for avoiding perturbation confusion:
+/// it identifies which JVP context created this dual number. When lifting
+/// a value, we check if it's a dual from the *current* interpreter—if not,
+/// it's treated as a constant (tangent = 0).
 #[derive(Clone)]
 pub struct Dual {
+    /// The interpreter that created this dual number
     pub interpreter: Rc<dyn Interpreter>,
+    /// The primal (original) value
     pub primal: Value,
+    /// The tangent (derivative) value
     pub tangent: Value,
 }
 
@@ -84,6 +162,8 @@ impl PartialEq for Dual {
     }
 }
 
+/// Create a zero value with the same structure as the input.
+/// For nested duals, this preserves the nesting structure.
 fn zero_like(value: &Value) -> Value {
     match value {
         Value::Float(_) => Value::Float(0.0),
@@ -96,10 +176,21 @@ fn zero_like(value: &Value) -> Value {
     }
 }
 
+// =============================================================================
+// Interpreter Trait and Global State
+// =============================================================================
+
+/// The interpreter trait defines how to handle each primitive operation.
+///
+/// Different interpreters implement different semantics:
+/// - `EvalInterpreter`: performs actual arithmetic
+/// - `JvpInterpreter`: propagates dual numbers for differentiation
+/// - `StageInterpreter`: records operations to build a Jaxpr
 pub trait Interpreter {
     fn interpret_op(&self, op: Op, args: &[Value]) -> Value;
 }
 
+/// The evaluation interpreter: performs ordinary concrete arithmetic.
 struct EvalInterpreter;
 
 impl Interpreter for EvalInterpreter {
@@ -114,10 +205,14 @@ impl Interpreter for EvalInterpreter {
     }
 }
 
+/// Thread-local storage for the current interpreter.
+/// Initially set to EvalInterpreter for normal evaluation.
 thread_local! {
     static CURRENT: RefCell<Rc<dyn Interpreter>> = RefCell::new(Rc::new(EvalInterpreter));
 }
 
+/// RAII guard that restores the previous interpreter when dropped.
+/// This ensures interpreter state is properly restored even if panics occur.
 pub struct InterpreterGuard {
     prev: Rc<dyn Interpreter>,
 }
@@ -135,6 +230,8 @@ fn current_interpreter() -> Rc<dyn Interpreter> {
     CURRENT.with(|cell| cell.borrow().clone())
 }
 
+/// Set the current interpreter and return a guard that restores the previous one.
+/// Use this in a scoped manner: `let _guard = set_interpreter(new_interp);`
 pub fn set_interpreter(interp: Rc<dyn Interpreter>) -> InterpreterGuard {
     let prev = CURRENT.with(|cell| {
         let prev = cell.borrow().clone();
@@ -144,14 +241,36 @@ pub fn set_interpreter(interp: Rc<dyn Interpreter>) -> InterpreterGuard {
     InterpreterGuard { prev }
 }
 
+// =============================================================================
+// User-Facing Operations
+// =============================================================================
+
+/// Add two values using the current interpreter.
+/// The actual behavior depends on which interpreter is active.
 pub fn add(x: Value, y: Value) -> Value {
     current_interpreter().interpret_op(Op::Add, &[x, y])
 }
 
+/// Multiply two values using the current interpreter.
+/// The actual behavior depends on which interpreter is active.
 pub fn mul(x: Value, y: Value) -> Value {
     current_interpreter().interpret_op(Op::Mul, &[x, y])
 }
 
+// =============================================================================
+// JVP (Forward-Mode AD) Interpreter
+// =============================================================================
+
+/// The JVP interpreter implements forward-mode automatic differentiation.
+///
+/// It interprets values as dual numbers (primal + tangent*ε) and propagates
+/// them through operations using the standard differentiation rules:
+/// - Addition: d(x + y) = dx + dy
+/// - Multiplication: d(x * y) = x*dy + dx*y (product rule)
+///
+/// The `prev` field stores the interpreter that was active when this JVP
+/// interpreter was created. We use it to evaluate the primal/tangent operations,
+/// which enables higher-order AD (differentiating derivatives).
 struct JvpInterpreter {
     prev: Rc<dyn Interpreter>,
 }
@@ -169,6 +288,14 @@ impl JvpInterpreter {
         }))
     }
 
+    /// Lift a value to a Dual number.
+    ///
+    /// If the value is already a Dual from THIS interpreter, return it as-is.
+    /// Otherwise, treat it as a constant with tangent = 0.
+    ///
+    /// This is the key to avoiding perturbation confusion: a Dual from a
+    /// *different* JVP interpreter (e.g., an outer differentiation context)
+    /// is constant with respect to THIS differentiation.
     fn lift(&self, value: &Value) -> Dual {
         let self_interp = current_interpreter();
         match value {
@@ -187,10 +314,14 @@ impl Interpreter for JvpInterpreter {
         match args {
             [x, y] => {
                 let self_interp = current_interpreter();
+                // Lift both arguments to Dual numbers
                 let dx = self.lift(x);
                 let dy = self.lift(y);
+                // Switch to the previous interpreter for computing on primals/tangents.
+                // This prevents infinite recursion and enables nesting.
                 let _guard = set_interpreter(self.prev.clone());
                 match op {
+                    // d(x + y) = dx + dy
                     Op::Add => {
                         let Dual { primal: px, tangent: tx, .. } = dx;
                         let Dual { primal: py, tangent: ty, .. } = dy;
@@ -198,6 +329,7 @@ impl Interpreter for JvpInterpreter {
                         let t = add(tx, ty);
                         Self::dual_value(self_interp, p, t)
                     }
+                    // d(x * y) = x*dy + dx*y (product rule)
                     Op::Mul => {
                         let Dual { primal: px, tangent: tx, .. } = dx;
                         let Dual { primal: py, tangent: ty, .. } = dy;
@@ -214,18 +346,30 @@ impl Interpreter for JvpInterpreter {
     }
 }
 
+/// Compute the Jacobian-vector product (JVP) of a function.
+///
+/// Given a function `f`, a primal input `x`, and a tangent vector `v`,
+/// returns `(f(x), df/dx * v)` - the function value and directional derivative.
+///
+/// For scalar functions, this is equivalent to computing `(f(x), f'(x) * v)`.
 pub fn jvp<F>(f: F, primal: Value, tangent: Value) -> (Value, Value)
 where
     F: Fn(Value) -> Value,
 {
+    // Create a new JVP interpreter, saving the current one
     let jvp_interpreter = Rc::new(JvpInterpreter::new(current_interpreter()));
+    // Create the input dual number
     let dual_in = JvpInterpreter::dual_value(jvp_interpreter.clone(), primal, tangent);
+    // Run f under the JVP interpreter
     let _guard = set_interpreter(jvp_interpreter.clone());
     let result = f(dual_in);
+    // Extract primal and tangent from the result
     let Dual { primal, tangent, .. } = jvp_interpreter.lift(&result);
     (primal, tangent)
 }
 
+/// Compute the derivative of f at x.
+/// This is a convenience wrapper around `jvp` with tangent = 1.
 pub fn derivative<F>(f: F, x: f64) -> Value
 where
     F: Fn(Value) -> Value,
@@ -234,6 +378,7 @@ where
 }
 
 /// Compute derivative where x can be any Value (including nested duals for higher-order AD).
+/// This is used internally for higher-order derivatives.
 pub fn derivative_value<F>(f: F, x: Value) -> Value
 where
     F: Fn(Value) -> Value,
@@ -243,7 +388,13 @@ where
 }
 
 /// Compute the nth-order derivative of f at x.
-/// For n=0, returns f(x). For n>0, returns d^n f / dx^n evaluated at x.
+///
+/// For n=0, returns f(x).
+/// For n>0, returns d^n f / dx^n evaluated at x.
+///
+/// This works by recursively applying `derivative_value`, which creates
+/// nested JVP interpreters. The key insight is that each level of nesting
+/// corresponds to one order of differentiation.
 pub fn nth_order_derivative<F>(n: usize, f: F, x: f64) -> Value
 where
     F: Fn(Value) -> Value + Clone + 'static,
@@ -252,6 +403,7 @@ where
 }
 
 /// Internal helper for nth_order_derivative that works with Values.
+/// Preserves the Value structure through recursion to enable nesting.
 fn nth_order_derivative_value<F>(n: usize, f: F, x: Value) -> Value
 where
     F: Fn(Value) -> Value + Clone + 'static,
@@ -259,6 +411,7 @@ where
     if n == 0 {
         f(x)
     } else {
+        // Differentiate "the function that computes the (n-1)th derivative"
         let f_clone = f.clone();
         derivative_value(
             move |v| nth_order_derivative_value(n - 1, f_clone.clone(), v),
@@ -267,12 +420,26 @@ where
     }
 }
 
+// =============================================================================
+// Staging Interpreter
+// =============================================================================
+
+/// State for the staging interpreter.
 #[derive(Default)]
 struct StageState {
     equations: Vec<Equation>,
     name_counter: usize,
 }
 
+/// The staging interpreter builds a Jaxpr IR by recording operations.
+///
+/// Instead of computing results, it:
+/// 1. Generates fresh variable names for results
+/// 2. Records each operation as an Equation
+/// 3. Returns symbolic Atom values that refer to the variables
+///
+/// This is essential for transformations that need the whole program,
+/// like dead-code elimination or reverse-mode AD.
 struct StageInterpreter {
     state: RefCell<StageState>,
 }
@@ -301,28 +468,41 @@ impl StageInterpreter {
 
 impl Interpreter for StageInterpreter {
     fn interpret_op(&self, op: Op, args: &[Value]) -> Value {
+        // Generate a fresh variable for the result
         let var = self.fresh_var();
+        // Convert arguments to atoms
         let atoms = args.iter().map(Self::value_to_atom).collect::<Vec<_>>();
+        // Record the equation
         let mut st = self.state.borrow_mut();
         st.equations.push(Equation {
             var: var.clone(),
             op,
             args: atoms,
         });
+        // Return a reference to the result variable
         Value::Atom(Atom::Var(var))
     }
 }
 
+/// Build a Jaxpr from a function by tracing it with symbolic inputs.
+///
+/// This runs the function under the staging interpreter, recording
+/// all operations. The result is a Jaxpr that can be:
+/// - Pretty-printed
+/// - Evaluated with `eval_jaxpr`
+/// - Differentiated (in a full implementation)
 pub fn build_jaxpr<F>(f: F, num_args: usize) -> Jaxpr
 where
     F: Fn(Vec<Value>) -> Value,
 {
     let stage = Rc::new(StageInterpreter::new());
+    // Create symbolic input variables
     let params = (0..num_args).map(|_| stage.fresh_var()).collect::<Vec<_>>();
     let args = params
         .iter()
         .map(|v| Value::Atom(Atom::Var(v.clone())))
         .collect::<Vec<_>>();
+    // Run the function under the staging interpreter
     let _guard = set_interpreter(stage.clone());
     let result = f(args);
     let return_val = StageInterpreter::value_to_atom(&result);
@@ -334,7 +514,13 @@ where
     }
 }
 
+/// Evaluate a Jaxpr with concrete arguments.
+///
+/// This interprets the Jaxpr by walking through equations and evaluating
+/// each one using the current interpreter. Because we use `current_interpreter`,
+/// we can differentiate through `eval_jaxpr` by running it under a JVP interpreter!
 pub fn eval_jaxpr(jaxpr: &Jaxpr, args: Vec<Value>) -> Value {
+    // Build initial environment from parameters
     let mut env: HashMap<Var, Value> = HashMap::new();
     for (v, a) in jaxpr.params.iter().cloned().zip(args.into_iter()) {
         env.insert(v, a);
@@ -343,6 +529,7 @@ pub fn eval_jaxpr(jaxpr: &Jaxpr, args: Vec<Value>) -> Value {
         Atom::Var(v) => env.get(v).cloned().expect("missing var"),
         Atom::Lit(x) => Value::Float(*x),
     };
+    // Evaluate each equation, using the current interpreter
     for eqn in &jaxpr.equations {
         let arg_vals = eqn
             .args
@@ -355,6 +542,17 @@ pub fn eval_jaxpr(jaxpr: &Jaxpr, args: Vec<Value>) -> Value {
     eval_atom(&jaxpr.return_val, &env)
 }
 
+// =============================================================================
+// Example Function
+// =============================================================================
+
+/// Example function: foo(x) = x * (x + 3)
+///
+/// This is equivalent to x² + 3x, which has:
+/// - foo(2) = 10
+/// - foo'(x) = 2x + 3, so foo'(2) = 7
+/// - foo''(x) = 2
+/// - foo'''(x) = 0
 pub fn foo(x: Value) -> Value {
     mul(x.clone(), add(x, Value::Float(3.0)))
 }

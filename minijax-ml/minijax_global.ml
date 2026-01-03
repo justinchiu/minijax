@@ -1,5 +1,37 @@
-(* MiniJax-ML (global interpreter): a minimal JAX-like interpreter in OCaml.
-   Mirrors autodidax2.md with a global current interpreter. *)
+(* MiniJax-ML: a minimal JAX-like interpreter in OCaml.
+
+   Design: Global Interpreter State
+   =================================
+   This implementation mirrors the Python version in autodidax2.md most closely.
+   It uses a mutable global `current_interpreter` reference that determines how
+   operations behave:
+
+     let current_interpreter : interpreter ref = ref eval_interpreter
+
+     let add x y = (!current_interpreter).interpret_op Add [x; y]
+
+   User programs don't need to pass the interpreter explicitly:
+
+     let foo x = mul x (add x (VFloat 3.0))
+
+   The `set_interpreter` function temporarily changes the interpreter and
+   restores it afterward (like Python's context manager):
+
+     let set_interpreter new_interpreter f =
+       let prev = !current_interpreter in
+       current_interpreter := new_interpreter;
+       let result = f () in
+       current_interpreter := prev;
+       result
+
+   Advantages:
+   - User code is simpler (no interpreter threading)
+   - Matches Python implementation closely
+   - Easy to understand context-switching model
+
+   Disadvantages:
+   - Mutable global state
+   - Must be careful with exception handling *)
 
 type op = Add | Mul
 

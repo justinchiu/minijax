@@ -1,5 +1,26 @@
 (* MiniJax-ML: a minimal JAX-like interpreter in OCaml.
-   Mirrors autodidax2.md: eval, forward-mode JVP, and staging to a tiny IR. *)
+
+   Design: Explicit Interpreter Passing
+   =====================================
+   This implementation passes the interpreter explicitly as a parameter to
+   operations, rather than using global state. Functions like `foo` take an
+   interpreter argument:
+
+     let foo interp x =
+       let y = add interp x (VFloat 3.0) in
+       mul interp x y
+
+   Advantages:
+   - Pure functional style, no mutable state
+   - Interpreter selection is explicit at call sites
+   - Easy to reason about which interpreter is active
+
+   Disadvantages:
+   - More verbose than global interpreter style
+   - Must thread interpreter through all calls
+
+   Compared to minijax_global.ml which uses mutable global state,
+   and minijax_reader.ml which uses a Reader monad. *)
 
 type op = Add | Mul
 

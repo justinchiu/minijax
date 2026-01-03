@@ -3,15 +3,36 @@
 
 -- | Forward-mode automatic differentiation using untagged dual numbers.
 --
--- This interpreter implements JVP (Jacobian-vector product) for forward-mode AD.
--- Values are interpreted as 'Dual' numbers carrying both primal and tangent
--- components. The derivative of a function @f@ at point @x@ with tangent @v@
--- can be computed by evaluating @f@ with input @Dual x v@ and reading the
--- tangent component of the result.
+-- = Design: Simple Untagged JVP
 --
--- Note: This uses /untagged/ dual numbers, which can suffer from "perturbation
--- confusion" in higher-order differentiation scenarios. See the test suite
--- for an example of this limitation.
+-- This is the simplest forward-mode AD interpreter. Values are 'Dual' numbers
+-- with primal and tangent components:
+--
+-- @
+-- data Dual = Dual { primal :: Double, tangent :: Double }
+-- @
+--
+-- The JVP rules are:
+--
+-- * @add (Dual px tx) (Dual py ty) = Dual (px + py) (tx + ty)@
+-- * @mul (Dual px tx) (Dual py ty) = Dual (px * py) (px * ty + tx * py)@
+--
+-- = Perturbation Confusion
+--
+-- __Warning__: This interpreter suffers from \"perturbation confusion\" in
+-- higher-order differentiation. Consider:
+--
+-- @
+-- f x = let g y = x in derivative g 0.0
+-- derivative f 0.0  -- Should be 0, but may give wrong answer!
+-- @
+--
+-- The inner @g@ is constant in @y@, so its derivative should be 0. But with
+-- untagged duals, the @x@ (which is a Dual from the outer differentiation)
+-- gets confused with the inner differentiation variable.
+--
+-- For correct higher-order AD, use 'MiniJax.Tagless.JVP.TaggedDynamic' or
+-- 'MiniJax.Tagless.JVP.TaggedStatic'.
 module MiniJax.Tagless.JVP.Dynamic
   ( JVP
   , runJVP

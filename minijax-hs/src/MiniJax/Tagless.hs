@@ -2,15 +2,43 @@
 
 -- | Tagless final encoding of MiniJax operations.
 --
+-- = Design: Tagless Final with Type Families
+--
 -- This module defines the core language interface through the 'JaxSym' type class.
--- Different interpreters implement 'JaxSym' to provide different semantics:
+-- The key idea is that programs are /polymorphic/ over the interpretation:
 --
--- * Evaluation: @MiniJax.Tagless.Eval@ interprets values as 'Double'
--- * Forward-mode AD: @MiniJax.Tagless.JVP.Dynamic@ interprets values as 'Dual'
--- * Staging: @MiniJax.Tagless.Stage@ interprets values as 'Atom' (for IR construction)
+-- @
+-- foo :: JaxSym m => JaxVal m -> m (JaxVal m)
+-- foo x = do
+--   y <- add x x
+--   z <- lit 3.0
+--   add y z
+-- @
 --
--- The same program can be interpreted in multiple ways without
--- modification, enabling evaluation, differentiation, compilation, etc.
+-- The same @foo@ can be:
+--
+-- * __Evaluated__: with @m = Eval@, @JaxVal m = Double@
+-- * __Differentiated__: with @m = JVP@, @JaxVal m = Dual@
+-- * __Staged__: with @m = Stage@, @JaxVal m = Atom@
+--
+-- = Type Family for Values
+--
+-- The associated type @JaxVal m@ maps each monad to its value type:
+--
+-- * @JaxVal Eval = Double@
+-- * @JaxVal JVP = Dual@
+-- * @JaxVal Stage = Atom@
+--
+-- This is more type-safe than the direct style ('MiniJax.Direct') which uses
+-- a single @Value@ sum type, but makes higher-order AD more complex.
+--
+-- = Available Interpreters
+--
+-- * @MiniJax.Tagless.Eval@: concrete evaluation
+-- * @MiniJax.Tagless.JVP.Dynamic@: untagged forward-mode AD (simple but limited)
+-- * @MiniJax.Tagless.JVP.TaggedStatic@: type-level tagged AD (no perturbation confusion)
+-- * @MiniJax.Tagless.JVP.TaggedDynamic@: runtime tagged AD (supports higher-order)
+-- * @MiniJax.Tagless.Stage@: staging to Jaxpr IR
 module MiniJax.Tagless
   ( JaxSym(..)
   , JaxAD(..)
