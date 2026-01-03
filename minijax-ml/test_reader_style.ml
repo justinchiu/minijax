@@ -12,9 +12,8 @@ let foo interp x =
 let g x _ = x
 
 let f interp x =
-  let g_x = g x in
   let should_be_zero =
-    derivative ~base_interpreter:eval_interpreter (fun _ v -> g_x v) 0.0
+    derivative ~base_interpreter:eval_interpreter (fun _ v -> g x v) 0.0
   in
   mul interp x should_be_zero
 

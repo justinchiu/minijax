@@ -12,9 +12,8 @@ let foo x : value reader =
 let g x _ = return x
 
 let f x =
-  let g_x = g x in
   let _p, should_be_zero =
-    jvp ~base_interpreter:eval_interpreter g_x (VFloat 0.0) (VFloat 1.0)
+    jvp ~base_interpreter:eval_interpreter (g x) (VFloat 0.0) (VFloat 1.0)
   in
   mul x should_be_zero
 

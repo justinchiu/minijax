@@ -11,9 +11,8 @@ let foo x =
 let g x _ = x
 
 let f x =
-  let g_x = g x in
   let should_be_zero =
-    set_interpreter eval_interpreter (fun () -> derivative g_x 0.0)
+    set_interpreter eval_interpreter (fun () -> derivative (g x) 0.0)
   in
   mul x should_be_zero
 

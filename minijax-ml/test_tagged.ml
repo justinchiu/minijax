@@ -12,10 +12,10 @@ end
 module F (S : SYM) = struct
   let run x =
     let g x _ = x in
-    let g_x = g x in
-    let _p, should_be_zero =
-      jvp_fun (module S) g_x (S.lit 0.0) (S.lit 1.0)
-    in
+    let module Tag = struct type t end in
+    let module J = Jvp(S)(Tag) in
+    let out = g (J.dual x (S.lit 0.0)) (J.lit 0.0) in
+    let should_be_zero = J.tangent out in
     S.mul x should_be_zero
 end
 

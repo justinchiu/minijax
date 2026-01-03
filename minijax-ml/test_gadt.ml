@@ -13,11 +13,10 @@ let foo x = eval foo_expr ~x
 let g x _ = x
 
 let f interp x =
-  let g_x = g x in
   let _p, should_be_zero =
     jvp_fun
       ~base_interpreter:eval_interpreter
-      (fun _ v -> g_x v)
+      (fun _ v -> g x v)
       (VFloat 0.0)
       (VFloat 1.0)
   in

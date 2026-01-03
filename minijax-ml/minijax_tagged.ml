@@ -120,18 +120,8 @@ let jvp (module P : PROG) primal tangent =
   let out = PJ.run (J.dual primal tangent) in
   (J.primal out, J.tangent out)
 
-let jvp_fun (type a) (module Base : SYM with type t = a) (f : a -> a) primal tangent =
-  let module Tag = struct type t end in
-  let module J = Jvp(Base)(Tag) in
-  let out = f (J.dual primal tangent) in
-  (J.primal out, J.tangent out)
-
 let derivative p x =
   let _, t = jvp p x 1.0 in
-  t
-
-let derivative_fun (type a) (module Base : SYM with type t = a) f x =
-  let _, t = jvp_fun (module Base) f x (Base.lit 1.0) in
   t
 
 let jvp_n (module P : PROG) n x =
