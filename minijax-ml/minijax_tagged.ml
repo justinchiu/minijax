@@ -1,5 +1,26 @@
 (* MiniJax-ML (type-indexed tags): tagless-final with static JVP tags. *)
 
+type op = Add | Mul
+
+(* IR types *)
+type var = string
+
+type atom =
+  | VarAtom of var
+  | LitAtom of float
+
+type equation =
+  { var : var
+  ; op : op
+  ; args : atom list
+  }
+
+type jaxpr =
+  { params : var list
+  ; equations : equation list
+  ; return_val : atom
+  }
+
 module type SYM = sig
   type t
   val add : t -> t -> t
@@ -99,8 +120,18 @@ let jvp (module P : PROG) primal tangent =
   let out = PJ.run (J.dual primal tangent) in
   (J.primal out, J.tangent out)
 
+let jvp_fun (type a) (module Base : SYM with type t = a) (f : a -> a) primal tangent =
+  let module Tag = struct type t end in
+  let module J = Jvp(Base)(Tag) in
+  let out = f (J.dual primal tangent) in
+  (J.primal out, J.tangent out)
+
 let derivative p x =
   let _, t = jvp p x 1.0 in
+  t
+
+let derivative_fun (type a) (module Base : SYM with type t = a) f x =
+  let _, t = jvp_fun (module Base) f x (Base.lit 1.0) in
   t
 
 let jvp_n (module P : PROG) n x =
@@ -124,3 +155,57 @@ let jvp2 (module P : PROG) x =
   let t = J1.tangent primal1 in
   let t2 = J1.tangent tangent1 in
   (p, t, t2)
+
+(* Staging interpreter. *)
+type stage_state =
+  { mutable equations : equation list
+  ; mutable name_counter : int
+  }
+
+let fresh_var st =
+  st.name_counter <- st.name_counter + 1;
+  "v_" ^ string_of_int st.name_counter
+
+let make_stage_sym st : (module SYM with type t = atom) =
+  (module struct
+    type t = atom
+    let lit x = LitAtom x
+
+    let add x y =
+      let var = fresh_var st in
+      st.equations <- st.equations @ [{ var; op = Add; args = [x; y] }];
+      VarAtom var
+
+    let mul x y =
+      let var = fresh_var st in
+      st.equations <- st.equations @ [{ var; op = Mul; args = [x; y] }];
+      VarAtom var
+  end)
+
+let build_jaxpr (module P : PROG) =
+  let st = { equations = []; name_counter = 0 } in
+  let param = fresh_var st in
+  let module S = (val make_stage_sym st : SYM with type t = atom) in
+  let module PS = P(S) in
+  let result = PS.run (VarAtom param) in
+  { params = [param]; equations = st.equations; return_val = result }
+
+let eval_jaxpr (type a) (module S : SYM with type t = a) jaxpr args =
+  let env = Hashtbl.create 16 in
+  List.iter2 (fun v a -> Hashtbl.add env v a) jaxpr.params args;
+  let eval_atom = function
+    | VarAtom v -> Hashtbl.find env v
+    | LitAtom x -> S.lit x
+  in
+  List.iter
+    (fun eqn ->
+      let arg_vals = List.map eval_atom eqn.args in
+      let result =
+        match eqn.op, arg_vals with
+        | Add, [x; y] -> S.add x y
+        | Mul, [x; y] -> S.mul x y
+        | _ -> invalid_arg "jaxpr expects two args"
+      in
+      Hashtbl.replace env eqn.var result)
+    jaxpr.equations;
+  eval_atom jaxpr.return_val

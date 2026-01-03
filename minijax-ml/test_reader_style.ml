@@ -4,6 +4,10 @@ let float_eq a b =
   let eps = 1e-9 in
   abs_float (a -. b) < eps
 
+let foo interp x =
+  let y = add interp x (VFloat 3.0) in
+  mul interp x y
+
 let () =
   (* Eval interpreter *)
   let v_add = add eval_interpreter (VFloat 2.0) (VFloat 3.0) in

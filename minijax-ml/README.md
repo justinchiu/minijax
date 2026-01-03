@@ -12,6 +12,14 @@ A minimal JAX-like interpreter in OCaml, following `autodidax2.md`:
   - `minijax_gadt.ml` (GADT-typed expression AST)
   - `minijax_tagged.ml` (tagless-final with type-indexed JVP tags)
 
+## API shape summary
+
+- `minijax.ml`: explicit interpreter threading (`add/mul` take `interpreter`), with `jvp ~base_interpreter`, `derivative ~base_interpreter`, `build_jaxpr`, `eval_jaxpr`. Straightforward but noisy.
+- `minijax_global.ml`: same ops as `minijax.ml`, but `add/mul` read a global `current_interpreter`; `jvp`/`build_jaxpr` swap it via `set_interpreter`. Convenient, implicit scoping.
+- `minijax_reader.ml`: `add/mul` are `value reader`; programs are `let*` chains with `run` to supply the interpreter. `jvp ~base_interpreter` and `build_jaxpr` consume reader programs. Compositional, explicit effects.
+- `minijax_tagged.ml`: tagless-final `SYM` + `Jvp` functor; programs are functors `PROG` with `run : S.t -> S.t`. Entry points: `run_eval`, `jvp`, `derivative`, `jvp_n`, `jvp2`. Modular, type-safe, heavier.
+- `minijax_gadt.ml`: AST-first (`expr`), with pure `eval`, `jvp`, `derivative` over the tree and a sample `foo_expr`. Simple, data-oriented.
+
 ## Quick sketch
 
 ```ocaml
