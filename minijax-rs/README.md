@@ -21,5 +21,5 @@ let jaxpr = build_jaxpr(|args| {
 ```
 
 Notes:
-- The JVP interpreter uses runtime tags to avoid perturbation confusion.
+- The JVP interpreter uses interpreter identity to avoid perturbation confusion.
 - Higher-order AD is not fully type-safe in this minimal dynamic-value model.

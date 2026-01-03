@@ -4,8 +4,8 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
@@ -42,11 +42,29 @@ pub enum Value {
     Dual(Box<Dual>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 pub struct Dual {
-    pub tag: u64,
+    pub interpreter: Rc<dyn Interpreter>,
     pub primal: Value,
     pub tangent: Value,
+}
+
+impl fmt::Debug for Dual {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Dual")
+            .field("interpreter", &"<interpreter>")
+            .field("primal", &self.primal)
+            .field("tangent", &self.tangent)
+            .finish()
+    }
+}
+
+impl PartialEq for Dual {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.interpreter, &other.interpreter)
+            && self.primal == other.primal
+            && self.tangent == other.tangent
+    }
 }
 
 fn zero_like(value: &Value) -> Value {
@@ -54,7 +72,7 @@ fn zero_like(value: &Value) -> Value {
         Value::Float(_) => Value::Float(0.0),
         Value::Atom(_) => Value::Atom(Atom::Lit(0.0)),
         Value::Dual(d) => Value::Dual(Box::new(Dual {
-            tag: d.tag,
+            interpreter: d.interpreter.clone(),
             primal: zero_like(&d.primal),
             tangent: zero_like(&d.tangent),
         })),
@@ -117,31 +135,29 @@ pub fn mul(x: Value, y: Value) -> Value {
     current_interpreter().interpret_op(Op::Mul, &[x, y])
 }
 
-static NEXT_TAG: AtomicU64 = AtomicU64::new(1);
-
-fn fresh_tag() -> u64 {
-    NEXT_TAG.fetch_add(1, Ordering::Relaxed)
-}
-
 struct JvpInterpreter {
-    tag: u64,
     prev: Rc<dyn Interpreter>,
 }
 
 impl JvpInterpreter {
     fn new(prev: Rc<dyn Interpreter>) -> Self {
-        Self { tag: fresh_tag(), prev }
+        Self { prev }
     }
 
-    fn dual_value(&self, primal: Value, tangent: Value) -> Value {
-        Value::Dual(Box::new(Dual { tag: self.tag, primal, tangent }))
+    fn dual_value(interpreter: Rc<dyn Interpreter>, primal: Value, tangent: Value) -> Value {
+        Value::Dual(Box::new(Dual {
+            interpreter,
+            primal,
+            tangent,
+        }))
     }
 
     fn lift(&self, value: &Value) -> Dual {
+        let self_interp = current_interpreter();
         match value {
-            Value::Dual(d) if d.tag == self.tag => (**d).clone(),
+            Value::Dual(d) if Rc::ptr_eq(&d.interpreter, &self_interp) => (**d).clone(),
             _ => Dual {
-                tag: self.tag,
+                interpreter: self_interp,
                 primal: value.clone(),
                 tangent: zero_like(value),
             },
@@ -153,6 +169,7 @@ impl Interpreter for JvpInterpreter {
     fn interpret_op(&self, op: Op, args: &[Value]) -> Value {
         match args {
             [x, y] => {
+                let self_interp = current_interpreter();
                 let dx = self.lift(x);
                 let dy = self.lift(y);
                 let _guard = set_interpreter(self.prev.clone());
@@ -160,14 +177,14 @@ impl Interpreter for JvpInterpreter {
                     Op::Add => {
                         let p = add(dx.primal.clone(), dy.primal.clone());
                         let t = add(dx.tangent.clone(), dy.tangent.clone());
-                        self.dual_value(p, t)
+                        Self::dual_value(self_interp, p, t)
                     }
                     Op::Mul => {
                         let p = mul(dx.primal.clone(), dy.primal.clone());
                         let t1 = mul(dx.primal.clone(), dy.tangent.clone());
                         let t2 = mul(dx.tangent.clone(), dy.primal.clone());
                         let t = add(t1, t2);
-                        self.dual_value(p, t)
+                        Self::dual_value(self_interp, p, t)
                     }
                 }
             }
@@ -182,7 +199,7 @@ where
 {
     let prev = current_interpreter();
     let jvp_interpreter = Rc::new(JvpInterpreter::new(prev));
-    let dual_in = jvp_interpreter.dual_value(primal, tangent);
+    let dual_in = JvpInterpreter::dual_value(jvp_interpreter.clone(), primal, tangent);
     let _guard = set_interpreter(jvp_interpreter.clone());
     let result = f(dual_in);
     let dual_out = jvp_interpreter.lift(&result);
@@ -209,7 +226,9 @@ struct StageInterpreter {
 
 impl StageInterpreter {
     fn new() -> Self {
-        Self { state: RefCell::new(StageState::default()) }
+        Self {
+            state: RefCell::new(StageState::default()),
+        }
     }
 
     fn fresh_var(&self) -> Var {
@@ -232,7 +251,11 @@ impl Interpreter for StageInterpreter {
         let var = self.fresh_var();
         let atoms = args.iter().map(Self::value_to_atom).collect::<Vec<_>>();
         let mut st = self.state.borrow_mut();
-        st.equations.push(Equation { var: var.clone(), op, args: atoms });
+        st.equations.push(Equation {
+            var: var.clone(),
+            op,
+            args: atoms,
+        });
         Value::Atom(Atom::Var(var))
     }
 }
@@ -251,7 +274,11 @@ where
     let result = f(args);
     let return_val = StageInterpreter::value_to_atom(&result);
     let equations = stage.state.borrow().equations.clone();
-    Jaxpr { params, equations, return_val }
+    Jaxpr {
+        params,
+        equations,
+        return_val,
+    }
 }
 
 pub fn eval_jaxpr(jaxpr: &Jaxpr, args: Vec<Value>) -> Value {
@@ -264,7 +291,11 @@ pub fn eval_jaxpr(jaxpr: &Jaxpr, args: Vec<Value>) -> Value {
         Atom::Lit(x) => Value::Float(*x),
     };
     for eqn in &jaxpr.equations {
-        let arg_vals = eqn.args.iter().map(|a| eval_atom(a, &env)).collect::<Vec<_>>();
+        let arg_vals = eqn
+            .args
+            .iter()
+            .map(|a| eval_atom(a, &env))
+            .collect::<Vec<_>>();
         let result = current_interpreter().interpret_op(eqn.op, &arg_vals);
         env.insert(eqn.var.clone(), result);
     }
@@ -328,5 +359,18 @@ mod tests {
             Value::Float(x) => assert!(float_eq(x, 10.0)),
             _ => panic!("expected float"),
         }
+    }
+
+    #[test]
+    fn perturbation_confusion_example() {
+        fn f(x: Value) -> Value {
+            let x_for_g = x.clone();
+            let g = move |_y: Value| x_for_g.clone();
+            let should_be_zero = derivative(g, 0.0);
+            mul(x, should_be_zero)
+        }
+
+        let result = derivative(f, 0.0);
+        assert_eq!(result, Value::Float(0.0));
     }
 }

@@ -1,7 +1,7 @@
 # minijax
 
 MiniJax is a tiny, multi-language reimplementation of the core ideas in
-`autodidax2.md`: a minimal JAX-style system built around context-sensitive
+the jax-from-scratch tutorial `autodidax2.md`: a minimal JAX-style system built around context-sensitive
 interpretation. The focus is on just two primitives (`add`, `mul`) and a small
 set of interpreters:
 
@@ -9,17 +9,13 @@ set of interpreters:
 - Forward-mode AD (JVP)
 - Staging to a tiny Jaxpr-like IR
 
-## Tutorial
-
-`autodidax2.md` is the narrative walkthrough and reference for the design. Each
-implementation mirrors that structure and examples.
-
 ## Implementations
 
 ### Haskell (`minijax-hs/`)
 
 Tagless-final encoding with multiple interpreters, plus an AST for simple
 interpretation tests.
+Multiple implementations of the JVP interpreter.
 
 Interpreter-style imports:
 
@@ -53,7 +49,7 @@ stack test
 
 ### OCaml (`minijax-ml/`)
 
-A minimal dynamic-value interpreter with eval, tagged JVP, and staging to a
+A few interpreter variants with eval, tagged JVP, and staging to a
 tiny IR. See `minijax-ml/README.md` for a quick sketch.
 
 ### Rust (`minijax-rs/`)
