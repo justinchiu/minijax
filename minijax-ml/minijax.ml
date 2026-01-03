@@ -22,20 +22,19 @@ type jaxpr =
   ; return_val : atom
   }
 
-(* Values that flow through the current interpreter. *)
+(* Values that flow through an interpreter. *)
 type value =
   | VFloat of float
   | VAtom of atom
   | VDual of dual
 
 and dual =
-  { tag : int
+  { interpreter : interpreter
   ; primal : value
   ; tangent : value
   }
 
-(* Interpreter interface. *)
-type interpreter =
+and interpreter =
   { interpret_op : op -> value list -> value
   }
 
@@ -54,7 +53,7 @@ let rec zero_like = function
   | VDual d ->
       let zp = zero_like d.primal in
       let zt = zero_like d.tangent in
-      VDual { tag = d.tag; primal = zp; tangent = zt }
+      VDual { interpreter = d.interpreter; primal = zp; tangent = zt }
 
 (* Eval interpreter. *)
 let eval_interpreter =
@@ -70,70 +69,48 @@ let eval_interpreter =
   in
   { interpret_op = eval_binop }
 
-let current_interpreter : interpreter ref = ref eval_interpreter
-
-let set_interpreter new_interpreter f =
-  let prev = !current_interpreter in
-  current_interpreter := new_interpreter;
-  match f () with
-  | result ->
-      current_interpreter := prev;
-      result
-  | exception exn ->
-      current_interpreter := prev;
-      raise exn
-
-let add x y = (!current_interpreter).interpret_op Add [x; y]
-let mul x y = (!current_interpreter).interpret_op Mul [x; y]
+let add interp x y = interp.interpret_op Add [x; y]
+let mul interp x y = interp.interpret_op Mul [x; y]
 
 (* JVP interpreter (tagged, dynamic). *)
-let next_tag =
-  let counter = ref 0 in
-  fun () ->
-    incr counter;
-    !counter
-
 let make_jvp_interpreter prev_interpreter =
-  let tag = next_tag () in
-  let dual_number primal tangent = VDual { tag; primal; tangent } in
-  let lift v =
+  let rec dual_number primal tangent =
+    VDual { interpreter = jvp_interpreter; primal; tangent }
+  and lift v =
     match v with
-    | VDual d when d.tag = tag -> d
-    | VDual _ -> { tag; primal = v; tangent = zero_like v }
-    | _ -> { tag; primal = v; tangent = zero_like v }
-  in
-  let interpret_op op args =
+    | VDual d when d.interpreter == jvp_interpreter -> d
+    | _ -> { interpreter = jvp_interpreter; primal = v; tangent = zero_like v }
+  and interpret_op op args =
     match args with
     | [x; y] ->
         let dx = lift x in
         let dy = lift y in
-        let compute () =
+        begin
           match op with
           | Add ->
-              let p = add dx.primal dy.primal in
-              let t = add dx.tangent dy.tangent in
+              let p = add prev_interpreter dx.primal dy.primal in
+              let t = add prev_interpreter dx.tangent dy.tangent in
               dual_number p t
           | Mul ->
-              let p = mul dx.primal dy.primal in
-              let t1 = mul dx.primal dy.tangent in
-              let t2 = mul dx.tangent dy.primal in
-              let t = add t1 t2 in
+              let p = mul prev_interpreter dx.primal dy.primal in
+              let t1 = mul prev_interpreter dx.primal dy.tangent in
+              let t2 = mul prev_interpreter dx.tangent dy.primal in
+              let t = add prev_interpreter t1 t2 in
               dual_number p t
-        in
-        set_interpreter prev_interpreter compute
+        end
     | _ -> invalid_arg "jvp expects two args"
-  in
-  ({ interpret_op }, dual_number, lift)
+  and jvp_interpreter = { interpret_op } in
+  (jvp_interpreter, dual_number, lift)
 
-let jvp f primal tangent =
-  let jvp_interpreter, dual_number, lift = make_jvp_interpreter !current_interpreter in
+let jvp ~base_interpreter f primal tangent =
+  let jvp_interpreter, dual_number, lift = make_jvp_interpreter base_interpreter in
   let dual_in = dual_number primal tangent in
-  let result = set_interpreter jvp_interpreter (fun () -> f dual_in) in
+  let result = f jvp_interpreter dual_in in
   let dual_out = lift result in
   (dual_out.primal, dual_out.tangent)
 
-let derivative f x =
-  let p, t = jvp f (VFloat x) (VFloat 1.0) in
+let derivative ~base_interpreter f x =
+  let p, t = jvp ~base_interpreter f (VFloat x) (VFloat 1.0) in
   ignore p;
   t
 
@@ -165,10 +142,10 @@ let build_jaxpr f num_args =
   in
   let args = List.map (fun v -> VAtom (VarAtom v)) params in
   let stage_interpreter = make_stage_interpreter st in
-  let result = set_interpreter stage_interpreter (fun () -> f args) in
+  let result = f stage_interpreter args in
   { params; equations = st.equations; return_val = atom_of_value result }
 
-let eval_jaxpr jaxpr args =
+let eval_jaxpr interp jaxpr args =
   let env = Hashtbl.create 16 in
   List.iter2 (fun v a -> Hashtbl.add env v a) jaxpr.params args;
   let eval_atom = function
@@ -178,10 +155,12 @@ let eval_jaxpr jaxpr args =
   List.iter
     (fun eqn ->
       let arg_vals = List.map eval_atom eqn.args in
-      let result = (!current_interpreter).interpret_op eqn.op arg_vals in
+      let result = interp.interpret_op eqn.op arg_vals in
       Hashtbl.replace env eqn.var result)
     jaxpr.equations;
   eval_atom jaxpr.return_val
 
 (* Example function: foo(x) = x * (x + 3). *)
-let foo x = mul x (add x (VFloat 3.0))
+let foo interp x =
+  let y = add interp x (VFloat 3.0) in
+  mul interp x y

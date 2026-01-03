@@ -1,0 +1,12 @@
+opam-version: "2.0"
+name: "minijax-ml"
+synopsis: "Minimal JAX-like interpreter in OCaml"
+description: "A tiny OCaml reimplementation of core JAX ideas from autodidax2.md."
+license: "BSD-3-Clause"
+depends: [
+  "ocaml"
+  "dune" {>= "3.8"}
+]
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]

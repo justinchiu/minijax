@@ -55,3 +55,13 @@ doc/
 
 # REPL history
 .ghci_history
+
+# OCaml / dune artifacts
+_build/
+_opam/
+*.cmi
+*.cmo
+*.cmx
+*.cmxa
+*.a
+*.o

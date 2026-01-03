@@ -1,0 +1,8 @@
+(library
+ (name minijax)
+ (modules minijax))
+
+(test
+ (name test)
+ (modules test)
+ (libraries minijax))
