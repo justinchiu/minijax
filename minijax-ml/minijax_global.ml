@@ -40,6 +40,9 @@ and interpreter =
 
 type 'a reader = interpreter -> 'a
 
+let primal d = d.primal
+let tangent d = d.tangent
+
 let float_of_value = function
   | VFloat x -> x
   | _ -> invalid_arg "expected VFloat"

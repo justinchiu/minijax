@@ -12,12 +12,8 @@ module type S = sig
     ; equations : equation list
     ; return_val : atom
     }
+  type dual
   type value = VFloat of float | VAtom of atom | VDual of dual
-  and dual =
-    { interpreter : interpreter
-    ; primal : value
-    ; tangent : value
-    }
   and interpreter =
     { interpret_op : op -> value list -> value
     }
@@ -28,6 +24,8 @@ module type S = sig
   val pure : value -> value reader
   val add : value -> value -> value reader
   val mul : value -> value -> value reader
+  val primal : dual -> value
+  val tangent : dual -> value
   val jvp : (value -> value reader) -> value -> value -> value * value
   val build_jaxpr : (value list -> value reader) -> int -> jaxpr
   val eval_jaxpr : interpreter -> jaxpr -> value list -> value

@@ -42,6 +42,9 @@ let float_of_value = function
   | VFloat x -> x
   | _ -> invalid_arg "expected VFloat"
 
+let primal d = d.primal
+let tangent d = d.tangent
+
 let atom_of_value = function
   | VAtom a -> a
   | VFloat x -> LitAtom x
