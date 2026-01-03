@@ -1,5 +1,6 @@
 # Stack build artifacts
 .stack-work/
+minijax-rs/target/
 *~
 
 # Stack lock file (auto-generated)
