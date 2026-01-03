@@ -59,6 +59,7 @@ let rec zero_like = function
 type 'a reader = interpreter -> 'a
 
 let return x : 'a reader = fun _ -> x
+let pure v : value reader = fun _ -> v
 
 let bind (m : 'a reader) (f : 'a -> 'b reader) : 'b reader =
   fun interp -> f (m interp) interp
@@ -117,15 +118,15 @@ let make_jvp_interpreter prev_interpreter =
   and jvp_interpreter = { interpret_op } in
   (jvp_interpreter, dual_number, lift)
 
-let jvp ~base_interpreter f primal tangent =
-  let jvp_interpreter, dual_number, lift = make_jvp_interpreter base_interpreter in
+let jvp f primal tangent =
+  let jvp_interpreter, dual_number, lift = make_jvp_interpreter eval_interpreter in
   let dual_in = dual_number primal tangent in
   let result = run jvp_interpreter (f dual_in) in
   let dual_out = lift result in
   (dual_out.primal, dual_out.tangent)
 
-let derivative ~base_interpreter f x =
-  let p, t = jvp ~base_interpreter f (VFloat x) (VFloat 1.0) in
+let derivative f x =
+  let p, t = jvp f (VFloat x) (VFloat 1.0) in
   ignore p;
   t
 
