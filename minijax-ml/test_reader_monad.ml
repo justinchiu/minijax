@@ -103,4 +103,14 @@ let () =
   let _p_conf, t_conf =
     jvp ~base_interpreter:eval_interpreter f (VFloat 0.0) (VFloat 1.0)
   in
-  assert (t_conf = VFloat 0.0)
+  assert (t_conf = VFloat 0.0);
+
+  (* Higher-order derivatives of foo at x=2 *)
+  let d0 = nth_derivative ~base_interpreter:eval_interpreter 0 foo 2.0 in
+  let d1 = nth_derivative ~base_interpreter:eval_interpreter 1 foo 2.0 in
+  let d2 = nth_derivative ~base_interpreter:eval_interpreter 2 foo 2.0 in
+  let d3 = nth_derivative ~base_interpreter:eval_interpreter 3 foo 2.0 in
+  assert (float_eq d0 10.0);
+  assert (float_eq d1 7.0);
+  assert (float_eq d2 2.0);
+  assert (float_eq d3 0.0)

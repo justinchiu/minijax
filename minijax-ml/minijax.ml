@@ -114,6 +114,34 @@ let derivative ~base_interpreter f x =
   ignore p;
   t
 
+let interpreter_for_value base_interpreter = function
+  | VDual d -> d.interpreter
+  | _ -> base_interpreter
+
+(* Compute derivative where the point can be a value (for higher-order AD). *)
+let derivative_value ~base_interpreter f v =
+  let interp = interpreter_for_value base_interpreter v in
+  let _, t = jvp ~base_interpreter:interp f v (VFloat 1.0) in
+  t
+
+let rec value_to_float = function
+  | VFloat x -> x
+  | VDual d -> value_to_float d.primal
+  | VAtom _ -> invalid_arg "cannot convert atom to float"
+
+let rec nth_derivative_value ~base_interpreter n f v =
+  if n = 0 then
+    let interp = interpreter_for_value base_interpreter v in
+    f interp v
+  else
+    derivative_value ~base_interpreter
+      (fun _interp u -> nth_derivative_value ~base_interpreter (n - 1) f u)
+      v
+
+let nth_derivative ~base_interpreter n f x =
+  if n < 0 then invalid_arg "nth_derivative: n must be non-negative"
+  else value_to_float (nth_derivative_value ~base_interpreter n f (VFloat x))
+
 (* Staging interpreter. *)
 type stage_state =
   { mutable equations : equation list
