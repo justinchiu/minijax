@@ -4,6 +4,10 @@ A minimal JAX-like interpreter in OCaml, following `autodidax2.md`:
 
 - Primitive ops: `add`, `mul`
 - Interpreters: eval, forward-mode JVP, staging to a tiny Jaxpr IR
+- Three front-ends:
+  - `minijax_global.ml` (global interpreter)
+  - `minijax.ml` (reader-style argument passing)
+  - `minijax_reader.ml` (Reader monad with `let*`)
 
 ## Quick sketch
 

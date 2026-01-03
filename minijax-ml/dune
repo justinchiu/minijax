@@ -1,9 +1,19 @@
 (library
  (name minijax)
  (wrapped false)
- (modules minijax_api minijax minijax_global minijax_reader))
+ (modules minijax minijax_global minijax_reader))
 
 (test
- (name test)
- (modules test)
+ (name test_global)
+ (modules test_global)
+ (libraries minijax))
+
+(test
+ (name test_reader_style)
+ (modules test_reader_style)
+ (libraries minijax))
+
+(test
+ (name test_reader_monad)
+ (modules test_reader_monad)
  (libraries minijax))
