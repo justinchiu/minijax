@@ -100,4 +100,33 @@ let () =
     set_interpreter eval_interpreter (fun () ->
       jvp f (VFloat 0.0) (VFloat 1.0))
   in
-  assert (t_conf = VFloat 0.0)
+  assert (t_conf = VFloat 0.0);
+
+  (* Higher-order derivatives of foo(x) = x*(x+3) = x^2 + 3x at x=2
+     foo(2) = 10
+     foo'(x) = 2x + 3, foo'(2) = 7
+     foo''(x) = 2
+     foo'''(x) = 0
+     foo''''(x) = 0 *)
+
+  (* 0th derivative (just evaluation) *)
+  let d0 = nth_derivative 0 foo 2.0 in
+  assert (float_eq d0 10.0);
+
+  (* 1st derivative *)
+  let d1 = nth_derivative 1 foo 2.0 in
+  assert (float_eq d1 7.0);
+
+  (* 2nd derivative *)
+  let d2 = nth_derivative 2 foo 2.0 in
+  assert (float_eq d2 2.0);
+
+  (* 3rd derivative (foo is quadratic, so 0) *)
+  let d3 = nth_derivative 3 foo 2.0 in
+  assert (float_eq d3 0.0);
+
+  (* 4th derivative *)
+  let d4 = nth_derivative 4 foo 2.0 in
+  assert (float_eq d4 0.0);
+
+  Printf.printf "All tests passed!\n"

@@ -128,6 +128,39 @@ let derivative f x =
   ignore p;
   t
 
+(* Compute derivative where the point can be a value (for higher-order AD).
+   When v is already a dual from an outer differentiation, jvp creates
+   nested duals, enabling higher-order AD. *)
+let derivative_value f v =
+  let _, t = jvp f v (VFloat 1.0) in
+  t
+
+(* Helper to extract float from nested value *)
+let rec value_to_float = function
+  | VFloat x -> x
+  | VDual d -> value_to_float d.primal
+  | VAtom _ -> failwith "cannot convert atom to float"
+
+(* Compute nth-order derivative of f at x using nested JVP.
+   The key insight: pass the value v through the recursion, allowing
+   nested dual numbers to form when derivative_value wraps v.
+
+   For foo(x) = x*(x+3) = x^2 + 3x:
+   - 0th derivative: f(x) = 10 at x=2
+   - 1st derivative: f'(x) = 2x + 3 = 7 at x=2
+   - 2nd derivative: f''(x) = 2
+   - 3rd+ derivative: 0 *)
+let rec nth_derivative_value n f v =
+  if n = 0 then
+    f v
+  else
+    (* Differentiate the function that computes (n-1)th derivative *)
+    derivative_value (fun u -> nth_derivative_value (n - 1) f u) v
+
+let nth_derivative n f x =
+  if n < 0 then invalid_arg "nth_derivative: n must be non-negative"
+  else value_to_float (nth_derivative_value n f (VFloat x))
+
 (* Staging interpreter. *)
 type stage_state =
   { mutable equations : equation list
