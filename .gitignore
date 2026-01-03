@@ -1,5 +1,6 @@
 # Stack build artifacts
 .stack-work/
+.stack-root/
 minijax-rs/target/
 *~
 
