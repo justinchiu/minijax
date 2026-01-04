@@ -4,4 +4,4 @@
  * This module re-exports everything from minijax.ts for convenient importing.
  */
 
-export * from "./minijax.js";
+export * from "./minijax.ts";

@@ -5,9 +5,6 @@
 import {
   Op,
   VFloat,
-  VAtom,
-  VarAtom,
-  LitAtom,
   add,
   mul,
   foo,
@@ -18,8 +15,9 @@ import {
   evalJaxpr,
   jaxprToString,
   valueToNumber,
-  Value,
-} from "./minijax.js";
+} from "./minijax.ts";
+
+import type { Value } from "./minijax.ts";
 
 // Simple test helper
 let passed = 0;

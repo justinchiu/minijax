@@ -37,10 +37,12 @@
 // =============================================================================
 
 /** The primitive operations in our language. */
-export enum Op {
-  Add = "Add",
-  Mul = "Mul",
-}
+export const Op = {
+  Add: "Add",
+  Mul: "Mul",
+} as const;
+
+export type Op = (typeof Op)[keyof typeof Op];
 
 // =============================================================================
 // Intermediate Representation (Jaxpr)
