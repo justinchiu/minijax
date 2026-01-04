@@ -218,7 +218,6 @@ makeJvpInterp myTag prev = Interpreter jvpOp
           return (VDual (Dual myTag p t))
 
 -- | Compute JVP of a function
-{-# NOINLINE jvp #-}
 jvp :: (Value -> Jax Value) -> Value -> Value -> Jax (Value, Value)
 jvp f primal tangent = do
   prev <- ask
@@ -270,7 +269,6 @@ buildJaxpr numArgs f =
   in Jaxpr params eqns retAtom
 
 -- | Run a Jax computation with staging, returning result and equations
-{-# NOINLINE runStaging #-}
 runStaging :: Int -> Jax Value -> (Value, [Equation])
 runStaging startCounter m =
   let toAtom :: Value -> Atom
