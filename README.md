@@ -21,6 +21,34 @@ set of interpreters:
 
 ---
 
+## Code Size Comparison
+
+Single-file implementations with full feature set, excluding comments and blank lines:
+
+| Implementation | LOC | Tokens | Tok/Line |
+|----------------|-----|--------|----------|
+| **Haskell Direct** | **203** | 1111 | 5.4 |
+| Python | 259 | 1419 | 5.4 |
+| TypeScript | 262 | **922** | 3.5 |
+| Rust | 397 | 1235 | 3.1 |
+
+**Two ways to measure:**
+- **Lines**: Haskell wins (203) - most concise syntax
+- **Tokens**: TypeScript wins (922) - least "content" needed
+
+**Why Haskell has fewest lines:**
+- Pattern matching vs switch/match statements
+- `withInterpreter = local . const` (1 line vs 10+ line context managers)
+- ADTs vs discriminated unions with `kind` fields
+- No boilerplate constructors (`VFloat x` vs `{ kind: "Float", value: x }`)
+
+**Why TypeScript has fewest tokens:**
+- Shorter keywords and less type annotation verbosity
+- Arrow functions and implicit returns
+- Sparser formatting style (more lines, less per line)
+
+---
+
 ## Feature Coverage by Implementation
 
 ### Haskell (`minijax-hs/`)
